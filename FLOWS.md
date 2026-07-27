@@ -1,0 +1,322 @@
+# FLOWS — how the engine actually works
+
+Written as a handoff document. If you are a new session picking this up, read
+this file first; it explains not just what the code does but *why each decision
+was made*, because most of them look arbitrary until you know the failure they
+prevent.
+
+---
+
+## The one idea
+
+**Secrets are kept by ABSENCE, not by instruction.**
+
+No prompt anywhere says "do not reveal the poison plot." Instead, the model that
+voices a character physically never receives the fact. A prompt-enforced secret
+fails the first time the player asks an unexpected question. An absent one cannot
+fail, because there is nothing to fail with.
+
+Everything below is machinery in service of that idea, plus its two corollaries:
+
+- **Corollary 1 — truth is also a secret.** Even the narrator never learns
+  whether a belief is true. A narrator that knew would hedge ("you *think* he
+  died of old age"), and that hedge tells the player there is something to doubt
+  while disclosing no hidden fact at all. Leak by tone.
+- **Corollary 2 — outputs need filtering too.** Projection protects what goes
+  *into* a model. `visible_events` protects what comes *out of* the engine. Skip
+  the second and the narrator faithfully reports a poisoning three rooms away.
+
+---
+
+## Services
+
+```
+  browser ──► nginx (frontend:8081) ──┬── / ........ React SPA + PWA
+                                      └── /api/ .... proxy ──► engine:8090
+                                                                  │
+                                                                  ▼
+                                              host-wrapper (HOST :5501, NOT docker)
+                                                                  │
+                              ┌───────────────┬────────────┬──────┴────┬─────────┐
+                            groq          github      mistral      gemini    claude-cli
+                                                                              (+ ollama)
+```
+
+| Service        | Where            | Why there |
+|----------------|------------------|-----------|
+| `frontend`     | docker :8091     | nginx serves the SPA *and* proxies `/api`, so the browser sees one origin. That is why there is **no CORS config anywhere** in this project. |
+| `engine`       | docker :8090     | All game logic. Loopback-published only; the browser reaches it through nginx. |
+| `host-wrapper` | **host** :5501   | Shells out to the `claude` CLI so Claude calls bill the **subscription**, not metered tokens. A container has neither the CLI nor its logged-in credentials. |
+| `cloudflared`  | docker, profile  | `--profile tunnel` → free `*.trycloudflare.com` URL. Needed for PWA install (service workers require TLS off-localhost). |
+
+**The wrapper is not in compose on purpose.** If you "fix" that by containerising
+it, you silently move all Claude usage onto metered API tokens.
+
+---
+
+## A turn, end to end
+
+`turn.py :: play_turn()`. **The order is the design, not an implementation
+detail.**
+
+```
+1. REFEREE      llm.get_referee(projected_player_view, action_text)
+                → difficulty, opposing stat, archetype, hours_elapsed
+                Runs FIRST because it decides how long the turn takes.
+
+2. TICK         plots.tick(world, rng, hours)
+                clock → modifiers → meters → plots → expiry
+                The world moves whether or not the player acted.
+
+3. PLAYER       resolution.resolve(stat, difficulty, rng)
+                Dice decide. The referee only set the problem.
+
+4. NPC TURNS    turn.npc_turn() for everyone in the player's location
+                project → intention JSON → dice → mutate state
+
+5. CONVERSATION turn.converse() for at most one NPC pair elsewhere
+                Information moves through the court without the player.
+
+6. FILTER       turn.visible_events(world, events, player_id)
+                ◄── THE STEP PEOPLE LEAVE OUT. Without it everything above
+                    leaks through the narrator.
+
+7. NARRATE      llm.get_narration(projected_view, perceived_events)
+                Last, and fed only already-decided, already-filtered facts.
+                A mouth, not a brain.
+```
+
+---
+
+## Module map
+
+| File | Owns | Touches an LLM? |
+|---|---|---|
+| `models.py` | Fact / Belief / Character / Plot / Clock / Meter / Modifier / WorldState | no |
+| `formula.py` | Safe AST evaluator for LLM-authored math | no |
+| `numerics.py` | Meters, modifiers, elapsed-time advance | no |
+| `projection.py` | `project()` — the wall. `perceives()` | no |
+| `resolution.py` | Dice, four outcome degrees, difficulty ladder | no |
+| `plots.py` | `tick()`, plot advance, exposure, `propagate()` | no |
+| `gametime.py` | Phase of day, `coerce_hours()` | no |
+| `llm.py` | Wrapper client + every prompt + reply validation | **yes — the only one** |
+| `turn.py` | The loop, NPC turns, conversation, `visible_events()` | via `llm.py` |
+| `store.py` | SQLite snapshots, rewind, truth report | no |
+| `main.py` | FastAPI surface | no |
+
+Seven of ten modules are pure and deterministic. That is deliberate: it is what
+makes the game testable and the outcomes real.
+
+---
+
+## Data model — why it looks like this
+
+### Facts and Beliefs are separate, joined by a table
+
+```python
+Fact   { id, content, is_true, tags }
+Belief { char_id, fact_id, stance, confidence, source_char_id, turn_acquired }
+```
+
+- **Not `known_by[]` on the fact.** The edge carries data. `source_char_id` is
+  what makes "Orys believes X *because Varys told him*" representable — and
+  therefore makes a discovered lie unwindable by invalidating one edge.
+- **`is_true` is ENGINE-ONLY.** It is never copied into a projection, never
+  prompted, never narrated. Its only legitimate consumers are the engine (an
+  action premised on a false belief should fail) and `store.truth_report()`
+  after the game.
+- **`content` is phrased neutrally** — "Aerion died of poison", never "X thinks
+  Aerion died of poison" — because the same fact is shared by everyone who holds
+  it, each at their own confidence.
+
+### Mutable state is NOT a fact
+
+`alive`, `location`, and meters are fields that change. A fact is a discoverable
+proposition with a truth value. Conflating them means writing fact-invalidation
+logic forever.
+
+---
+
+## Projection — the wall
+
+`project(world, char_id) -> ProjectedWorld`
+
+Strips everything the character does not hold a belief about. Three specific
+leaks it closes:
+
+1. **Truth.** `is_true` is never read. See Corollary 1.
+2. **Identifiers.** Fact ids are hand-authored and therefore descriptive
+   (`f_king_poisoned` announces the secret in the id even when content was
+   filtered). `ProjectedBelief.fact_id` is `Field(exclude=True)` — present on the
+   object for the engine, absent from every serialization.
+3. **`hides` is not trusted.** A character can only conceal a fact they actually
+   hold a belief about. *The property test caught this one live* — Ollivar's
+   `hides` listed a fact he had no belief in, and its content leaked straight
+   into his own prompt.
+
+Always serialize prompts through `view.prompt_payload()`, never by reaching into
+fields, or the `exclude=True` protection is bypassed.
+
+---
+
+## The belief-index protocol
+
+**How an NPC is prevented from inventing or leaking a fact when it speaks.**
+
+The prompt hands the speaker a numbered list of *their own* beliefs:
+
+```
+  [0] The king has been bedridden for eleven days. — you are certain of this
+  [1] The treasury is short. — you only suspect this (confidence 0.6), heard from Stagg
+```
+
+The reply must be an **index**, not content:
+
+```json
+{ "action": "speak", "target": "Byren Stagg", "reveals_belief": 1, "truthful": false }
+```
+
+Saying something you don't know becomes *inexpressible* rather than merely
+forbidden. An out-of-range index is dropped (`turn.py::_speak`). Note there is no
+truth marker in the menu — the speaker doesn't have one either.
+
+---
+
+## Numeric meters
+
+The division of labour:
+
+> the LLM emits a formula or modifier **once, as data**;
+> the engine applies it **every tick**, deterministically.
+
+Ask a model to compound a value over twelve turns and it drifts. Ask for
+`"gold * 0.02 - upkeep"` and the engine runs it exactly, forever.
+
+- **Advance is by ELAPSED HOURS**, not turn count. `last_advanced_at_hour` per
+  meter makes it idempotent — replay and rewind can never double-count.
+- **Rates are computed from a snapshot of pre-step values**, then applied
+  together. Without simultaneous update, a formula referencing another meter
+  would depend on dict iteration order and the same save would evolve
+  differently after a reload.
+- **`RATE_PCT` modifiers stack multiplicatively** so two −50% debuffs quarter a
+  rate rather than zeroing it (and three don't reverse its sign).
+- **A bad formula freezes one meter and logs it** — it never halts the turn.
+
+### `formula.py` — never use `eval()` here
+
+LLM-authored formulas are untrusted input executing on the host. The evaluator
+walks an AST **whitelist**: numbers, bound names, arithmetic, comparisons,
+ternary, and a short list of pure functions. Attribute access, subscripts,
+lambdas, comprehensions and unlisted calls all raise `FormulaError`. Unknown node
+types are refused by default. Exponents are capped (`2**10**9` would hang).
+
+---
+
+## Time
+
+LLMs forget to advance time. Two mechanisms, neither relying on memory:
+
+1. **`hours_elapsed` has an engine-side default.** `gametime.coerce_hours()`
+   clamps to `[0.05, 72]` and substitutes the archetype default when the value is
+   missing, non-numeric, or absurd. **Returning 0 cannot freeze the clock** — it
+   is raised to the floor. Forgetting is not a state the schema permits.
+2. **Phase of day is computed and handed over.** Every projection carries
+   `phase` ("night") and `time_of_day` ("day 2, evening (19:30)"). No model ever
+   infers whether it is night from a raw hour.
+
+---
+
+## Determinism and rewind
+
+- `resolution.make_rng(seed)` returns a **private** `random.Random`. Never
+  `random.seed()` — that mutates global state and makes concurrent games
+  interfere.
+- `turn._rng_for(world, seed)` derives the generator from **(seed, turn)**. This
+  is what makes rewind honest: replaying turn 7 from a snapshot reproduces turn
+  7's rolls exactly.
+- `store.py` saves the **full world** every turn, so rewind is a `SELECT`, not a
+  replay. It doubles as the anti-cheat inspector: diff turn N against N+1.
+- LLM replies are *not* deterministic. Rewind restores state, not prose.
+
+---
+
+## Provider routing
+
+`host-wrapper/llm_router.py`, inherited from ObsidianOptimizer.
+
+- **Two chains.** `LLM_TEXT_PRIORITY` (NPC intentions — cheap, schema-constrained,
+  quality barely shows) puts free tiers first. `LLM_NARRATOR_PRIORITY` is
+  **inverted** — narration is the one call the player reads, once per turn, so it
+  gets the good models first.
+- Per-provider rate spacing, 429 benching with escalating cooldown honouring
+  `Retry-After`, priority queue so important calls win a freed provider.
+- `ollama` is last on both chains: reached only when every hosted provider is
+  benched or unreachable — exactly the offline case.
+- `complete_json` is paranoid by design: `response_format` is only a *nudge*,
+  `_parse_json_object` digs the object out of fences/prose, `required_keys` is
+  checked, and failures retry with a repair instruction that re-enters the router
+  (so a provider that keeps babbling gets skipped).
+
+### Claude CLI resolution
+
+`claude` is installed natively at `~/.local/bin/claude.exe` (v2.1.220), auth is
+**OAuth / subscription type `pro`**, and `ANTHROPIC_API_KEY` is deliberately
+blank — so Claude usage draws on the subscription and can never silently fall
+onto metered tokens.
+
+`_find_claude()` does **not** trust PATH alone. The native Windows installer
+drops the binary in `~/.local/bin` and tells you to restart your terminal, so any
+already-running process (like a long-lived wrapper) never sees it — and the
+failure is silent, quietly shifting spend to other providers. Resolution order:
+
+1. `CLAUDE_BIN` env override
+2. `shutil.which("claude")`
+3. known install locations (`~/.local/bin`, npm shim, `/usr/local/bin`)
+
+Verified routing after a full turn: `claude-cli ok=2` (narration) and
+`github`/`groq` `ok=3` (NPC intentions) — the intended split.
+
+---
+
+## Tests — 84, all deterministic, no LLM
+
+`services/engine/tests/`
+
+The important ones are **properties, not spot checks**, because the leak you
+think to check for is never the one that gets you:
+
+- `test_projection_contains_exactly_the_beliefs_held` — for every character and
+  every fact, appears in projection **iff** a belief exists. Both directions:
+  forward catches leaks, backward catches erasure.
+- `test_is_true_never_appears_in_any_projection`
+- `test_a_false_belief_is_indistinguishable_from_a_true_one`
+- `test_fact_ids_never_reach_a_prompt`
+- `test_narrator_never_receives_events_from_another_room`
+- `test_npc_cannot_speak_a_fact_it_does_not_hold`
+- `test_zero_hours_is_raised_to_the_floor`
+- `test_formula_refuses_code_execution` (8 injection payloads)
+- `test_meter_step_is_order_independent`
+- `test_turn_survives_total_provider_outage`
+
+Run: `cd services/engine && python -m pytest tests/ -q`
+
+---
+
+## Open design question — NOT yet implemented
+
+**Trust / evidence / hesitation.**
+
+Live play reproduced the problem on turn one: Mycella Ferrow, a *conspirator*,
+volunteered the entire Dragonstone conspiracy to Orys at confidence 0.9 the first
+time he spoke to her. Nothing in the model makes a character reluctant.
+
+Unconstrained propagation collapses the court into omniscient opponents within a
+few turns. The open questions:
+
+- What gates disclosure? Trust/disposition threshold, a `guile` contest, risk
+  weighted by `hides`?
+- Should suspicion require **evidence** — a separate trackable object — rather
+  than assertion alone?
+- Does hesitation change over a playthrough, and driven by what?
+
+Deliberately parked for design discussion before implementation.
