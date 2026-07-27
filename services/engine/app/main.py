@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import llm, store, telemetry
+from . import llm, store, telemetry, worldgen
 from .models import WorldState
 from .projection import project
 from .turn import play_turn
@@ -110,6 +110,60 @@ def _opening_scene(view) -> str:
         f"it is age and a hard winter.\n\n"
         f"Across the table, Byren Stagg has not opened the ledgers he brought. "
         f"Mycella Ferrow is watching you, and has been for some time.")
+
+
+class GeneratedGame(BaseModel):
+    premise: str
+    title: str = ""
+    seed: str = ""
+    characters: int = 7
+    facts: int = 14
+    # Write the generated world out as a seed file too, so it can be edited,
+    # diffed and replayed like a hand-authored scenario.
+    save_as: str = ""
+
+
+@app.post("/games/generate")
+def generate_game(request: GeneratedGame) -> dict:
+    """Session Zero. Build a whole world from a premise, then start a game in it.
+
+    Slow and expensive by design — it runs once, on the `orchestrate` chain, and
+    the player is not waiting on a turn while it happens. Everything the
+    orchestrator later references was written here, which is what stops it
+    inventing entities mid-game.
+
+    `report` lists every repair made to the generated spec: dangling ids that
+    were dropped, fields that had to fall back. A scenario that generated badly
+    should be visible rather than silently thin.
+    """
+    with telemetry.turn_context("worldgen", 0):
+        try:
+            world, report = worldgen.generate(
+                request.premise, request.characters, request.facts)
+        except (ValueError, llm.LLMUnavailable) as exc:
+            raise HTTPException(502, f"worldgen failed: {exc}") from None
+
+    saved = ""
+    if request.save_as:
+        safe = "".join(c for c in request.save_as if c.isalnum() or c in "-_")
+        saved = worldgen.save(world, SEED_FILE.parent / f"{safe}.json")
+
+    seed = request.seed or uuid.uuid4().hex[:8]
+    game_id = store.create_game(world, seed=seed,
+                                title=request.title or request.premise[:60])
+    view = project(world, world.player_id)
+    return {
+        "game_id": game_id,
+        "seed": seed,
+        "turn": 0,
+        "time_of_day": view.time_of_day,
+        "canon": world.canon,
+        "report": report,
+        "saved_to": saved,
+        "narration": f"{view.time_of_day}. You are {view.self_name}"
+                     + (f", {view.self_title}." if view.self_title else "."),
+        "suggested_actions": ["Look around", "Speak to whoever is here", "Wait"],
+    }
 
 
 @app.get("/games")
