@@ -289,6 +289,41 @@ def get_referee(view: ProjectedWorld, action_text: str) -> RefereeCall:
         return RefereeCall(reasoning="(no model available — default difficulty)")
 
 
+SCENE_REPORT_SYSTEM = (
+    "You report, secondhand, a conversation the listener was not present for. "
+    "You never invent what was said. Lines you are told were unintelligible stay "
+    "unintelligible — do not guess at them. Two or three sentences, past tense, "
+    "the tone of something pieced together after the fact."
+)
+
+
+def get_scene_report(view: ProjectedWorld, location: str,
+                     lines: list[str]) -> str:
+    """Write up an offstage scene for someone who has since earned knowledge of it.
+
+    This is the ONLY place an offstage conversation ever costs a token, and it is
+    paid once, long after the fact, for the small fraction of scenes that ever
+    surface. Lines the recaller cannot account for arrive already redacted (see
+    scene.render_recalled) — so the redaction is structural, and this prompt is
+    merely asked not to paper over it.
+    """
+    body = "\n".join(f"  - {line}" for line in lines) or "  - nothing of note"
+    try:
+        return complete_text(
+            f"""TIME: {view.time_of_day}
+YOU ARE WRITING FOR: {view.self_name}, {view.self_title}
+THEY HAVE JUST LEARNED OF A CONVERSATION AT: {location}
+
+WHAT THEY CAN ACCOUNT FOR:
+{body}
+
+Report what they now understand of that meeting. Do not invent participants,
+words, or conclusions beyond the list above.""",
+            SCENE_REPORT_SYSTEM, capability="narrate", priority="medium")
+    except LLMUnavailable:
+        return "\n".join(f"- {line}" for line in lines)
+
+
 def get_narration(view: ProjectedWorld, resolved_events: list[str],
                   player_action: str = "") -> str:
     """Narration is the one call the player actually reads, so it runs on the

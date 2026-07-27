@@ -22,26 +22,19 @@ import random
 
 from pydantic import BaseModel
 
-from . import disclosure, evidence as evidence_mod, llm
+from . import disclosure, evidence as evidence_mod, llm, scene as scene_mod
 from .gametime import ARCHETYPE_HOURS, coerce_hours, describe_time
-from .models import ModifierKind, Stance, WorldState
+from .models import Event, ModifierKind, Stance, WorldState
 from .numerics import add_modifier
 from .plots import propagate, tick, witnesses
 from .projection import perceives, project
 from .resolution import (Outcome, difficulty_from_label, make_rng, resolve_opposed,
                          stat_of)
+from .scene import Mode, SceneRecord
 
-
-class Event(BaseModel):
-    """A thing that happened, tagged with where — so perception can filter it."""
-
-    location: str
-    text: str
-    # Characters who directly took part; they always perceive it even if the
-    # location bookkeeping is imperfect.
-    actors: list[str] = []
-    # Engine-side detail (dice arithmetic) — DM panel only, never narrated.
-    detail: str = ""
+# How many offstage scenes may run in one turn. They cost zero tokens, so this
+# is a legibility cap on the DM panel rather than a budget.
+MAX_OFFSTAGE_SCENES = 3
 
 
 class TurnResult(BaseModel):
@@ -53,6 +46,9 @@ class TurnResult(BaseModel):
     hour: float = 0.0
     turn: int = 0
     time_of_day: str = ""
+    # Scenes that ran this turn. Offstage ones carry no prose — they are the
+    # record a player can later discover. DM panel and store, never the browser.
+    scenes: list[SceneRecord] = []
 
 
 def _rng_for(world: WorldState, seed: int | str | None) -> random.Random:
@@ -107,68 +103,16 @@ def npc_turn(world: WorldState, char_id: str, rng: random.Random,
 
 def _speak(world: WorldState, speaker_id: str, view, intention,
            rng: random.Random, target_id: str | None = None) -> list[Event]:
-    """Say one of your own beliefs, out loud, in a room.
+    """One character says one thing, out loud, in a room.
 
-    Two things are load-bearing here.
-
-    **Speech reaches every witness, not just the addressee.** This was a genuine
-    bug: `propagate` ran for `target_id` alone, so a man standing three feet away
-    heard nothing. `target` now shapes only the PROSE — who you are looking at
-    while you say it. Fixing it is also what makes group conversation mostly fall
-    out for free: a scene with several people in it is just a room where speech
-    lands on all of them, with no separate machinery for it.
-
-    **The engine gates disclosure, the model only proposes it.** The index
-    protocol already made inventing a fact inexpressible; it did nothing about a
-    conspirator cheerfully volunteering the conspiracy. `disclosure` rolls
-    candor + trust-in-the-room - risk. On a failure nothing propagates AND the
-    model's own `speech` line is discarded — it is free text that may well
-    contain the very thing being withheld, so the only safe withheld line is one
-    we write ourselves.
+    Delegates to `scene.speak_in_room` — the same primitive the group relay
+    uses, so a lone NPC blurting something and a five-person council scene go
+    through identical disclosure, propagation and revision. There is no separate
+    "conversation" code path any more, which is what stopped the two drifting.
     """
-    index = intention.reveals_belief
-    if not (0 <= index < len(view.beliefs)):
-        return []
-
-    belief = view.beliefs[index]
-    speaker = world.characters[speaker_id]
-
-    # Everyone alive in the room hears it. The addressee is one of them.
-    audience = [cid for cid in witnesses(world, speaker.location)
-                if cid != speaker_id]
-    if not audience:
-        return []
-
-    disclosed, chance = disclosure.will_disclose(
-        world, speaker_id, audience, belief.fact_id, rng)
-
-    if not disclosed:
-        return [Event(
-            location=speaker.location,
-            text=f"{speaker.name} begins to say something, then thinks better of it",
-            actors=[speaker_id],
-            detail=(f"WITHHELD fact={belief.fact_id} p={chance:.2f} "
-                    f"room={audience}"))]
-
-    changed = [cid for cid in audience
-               if propagate(world, speaker_id, cid, belief.fact_id,
-                            truthful=intention.truthful)]
-
-    line = intention.speech or belief.content
-    addressee = (world.characters[target_id].name if target_id in world.characters
-                 else None) if target_id else None
-    text = (f'{speaker.name} tells {addressee}: "{line}"' if addressee
-            else f'{speaker.name} says: "{line}"')
-    if addressee and len(audience) > 1:
-        overhearing = [world.characters[c].name for c in audience if c != target_id]
-        text += f" — within earshot of {', '.join(overhearing)}"
-
-    return [Event(
-        location=speaker.location,
-        text=text,
-        actors=[speaker_id] + audience,
-        detail=(f"conveyed fact={belief.fact_id} truthful={intention.truthful} "
-                f"p={chance:.2f} heard_by={audience} changed={changed}"))]
+    events, _exchange, _notes = scene_mod.speak_in_room(
+        world, speaker_id, view, intention, rng, target_id)
+    return events
 
 
 def _contest(world: WorldState, actor_id: str, target_id: str,
@@ -184,65 +128,51 @@ def _contest(world: WorldState, actor_id: str, target_id: str,
 def _resolve_target(world: WorldState, name: str, location: str) -> str | None:
     """Match a model-returned NAME back to a character id, restricted to people
     actually present — an NPC cannot address someone across the map."""
-    if not name:
-        return None
-    wanted = name.strip().lower()
-    for char_id, character in world.characters.items():
-        if not character.alive or character.location != location:
-            continue
-        if wanted in (character.name.lower(), char_id.lower()):
-            return char_id
-    # Partial match ("Varys" for "Mycella Ferrow" won't hit; "Mycella" will).
-    for char_id, character in world.characters.items():
-        if (character.alive and character.location == location
-                and wanted in character.name.lower()):
-            return char_id
-    return None
+    return scene_mod._resolve_target(world, name, location)
 
 
-# ── NPC <-> NPC conversation ────────────────────────────────────────────────
+# ── offstage scenes ─────────────────────────────────────────────────────────
 
-def converse(world: WorldState, a_id: str, b_id: str,
-             rng: random.Random) -> list[Event]:
-    """Two NPCs talk without the player. Each speaks from their OWN projection,
-    so neither can mention what they don't know, and either may lie.
+def offstage_groups(world: WorldState, rng: random.Random,
+                    exclude_location: str) -> list[list[str]]:
+    """Which rooms have a conversation worth resolving this turn.
 
-    This is what makes the world feel alive between scenes: information moves
-    through the court on its own, and the player can walk into a room where
-    everyone already knows something they don't.
-    """
-    events: list[Event] = []
-    for speaker_id, listener_id in ((a_id, b_id), (b_id, a_id)):
-        speaker = world.characters[speaker_id]
-        if not speaker.alive:
-            continue
-        view = project(world, speaker_id)
-        note = (f"You are speaking privately with "
-                f"{world.characters[listener_id].name}.")
-        intention = llm.get_intention(view, note)
-        if intention.reveals_belief != llm.NO_FACT:
-            events += _speak(world, speaker_id, view, intention, rng, listener_id)
-    return events
+    Replaces the old `_conversation_pairs`, which flipped a coin and then picked
+    two co-located NPCs at random. That read as random because it was: gossip
+    fired for no reason, between no one in particular, and always in pairs.
 
-
-def _conversation_pairs(world: WorldState, rng: random.Random,
-                        exclude: str) -> list[tuple[str, str]]:
-    """Pick NPC pairs who share a room and have reason to talk.
-
-    Deliberately at most one pair per turn: each conversation costs two LLM
-    calls, and the court gossiping constantly is both expensive and noisy.
+    Now a room is a candidate because someone in it has PRESSURE — something
+    recently learned, someone they feel strongly about, something to hide. The
+    salience score already used to order speakers is reused to rank rooms, and
+    the top few run. Groups, not pairs: a room of four resolves as a room of
+    four, because offstage scenes cost nothing.
     """
     by_location: dict[str, list[str]] = {}
     for character in world.characters.values():
-        if character.alive and character.id != exclude:
+        if (character.alive and character.location != exclude_location):
             by_location.setdefault(character.location, []).append(character.id)
 
-    candidates = [group for group in by_location.values() if len(group) >= 2]
-    if not candidates or rng.random() > 0.5:
-        return []
-    group = rng.choice(candidates)
-    a, b = rng.sample(group, 2)
-    return [(a, b)]
+    scored = []
+    for location, group in by_location.items():
+        if len(group) < 2:
+            continue
+        pressure = max(scene_mod.salience(world, c, [g for g in group if g != c])
+                       for c in group)
+        scored.append((pressure, location, group[:scene_mod.MAX_PARTICIPANTS]))
+
+    scored.sort(key=lambda s: -s[0])
+    return [group for _p, _loc, group in scored[:MAX_OFFSTAGE_SCENES]]
+
+
+def converse(world: WorldState, a_id: str, b_id: str,
+             rng: random.Random) -> list[Event]:
+    """Two named NPCs talk. Kept as a thin wrapper over the relay so existing
+    callers and tests keep working; new code should use `scene.run_scene`."""
+    location = world.characters[a_id].location
+    events, _record = scene_mod.run_scene(
+        world, location, [a_id, b_id], rng, mode=Mode.ONSTAGE, passes=1)
+    return events
+
 
 
 # ── perception filter ───────────────────────────────────────────────────────
@@ -263,9 +193,15 @@ def visible_events(world: WorldState, events: list[Event], char_id: str) -> list
 
 def play_turn(world: WorldState, player_action: str,
               seed: int | str | None = None,
-              enable_conversations: bool = True) -> TurnResult:
+              enable_conversations: bool = True,
+              scene_passes: int = scene_mod.MAX_PASSES) -> TurnResult:
     """One full turn. `world` is mutated in place; snapshot before calling if you
-    want to rewind."""
+    want to rewind.
+
+    `scene_passes` is the cost dial for the one expensive thing in the turn: the
+    onstage group conversation costs `people_present x passes` cheap calls. Set
+    it to 1 for a fast turn, 0 to fall back to one-line-each NPC reactions.
+    """
     player_id = world.player_id
     player = world.characters[player_id]
     dm_log: list[str] = []
@@ -295,20 +231,44 @@ def play_turn(world: WorldState, player_action: str,
     if referee is not None:
         events += _resolve_player_action(world, player_action, referee, rng, dm_log)
 
-    # 4. NPCs in the player's location react; NPCs elsewhere live their own lives.
+    # 4. ONSTAGE. The player's room is a scene, not a queue of monologues: each
+    #    NPC present speaks having heard everyone before them. This is the only
+    #    place in the turn that pays for a group conversation, and it is the only
+    #    place the player can actually hear one.
     situation_note = player_action.strip()[:200]
-    for char_id in witnesses(world, player.location):
-        if char_id == player_id:
-            continue
-        events += npc_turn(world, char_id, rng, situation_note)
+    scenes: list[SceneRecord] = []
+    present = [c for c in witnesses(world, player.location) if c != player_id]
 
-    # 5. Two NPCs may talk privately. The player may never see this — that is the
-    #    point; information moves through the court on its own.
+    if len(present) >= 2 and scene_passes > 0:
+        spoken, record = scene_mod.run_scene(
+            world, player.location, present + [player_id], rng,
+            mode=Mode.ONSTAGE, situation=situation_note,
+            passes=scene_passes, player_id=player_id)
+        events += spoken
+        scenes.append(record)
+        dm_log.append(f"[scene] onstage at {player.location}: "
+                      f"{len(record.participants)} present, "
+                      f"{len(record.exchanges)} exchanges")
+        dm_log += [f"[revision] {n}" for n in record.notes]
+    else:
+        # One NPC (or none) — a scene of one is just a person acting.
+        for char_id in present:
+            events += npc_turn(world, char_id, rng, situation_note)
+
+    # 5. OFFSTAGE. Rooms with pressure resolve mechanically — disclosure,
+    #    propagation and revision all run, and NOT ONE TOKEN IS SPENT. The player
+    #    may never learn any of it happened; if they later do, the record is
+    #    written up then (scene.render_recalled). This is the entire cost model:
+    #    you pay for rooms you are standing in, and nothing else.
     if enable_conversations:
-        for a_id, b_id in _conversation_pairs(world, rng, exclude=player_id):
-            conversation = converse(world, a_id, b_id, rng)
-            events += conversation
-            dm_log += [f"[private] {e.text}" for e in conversation]
+        for group in offstage_groups(world, rng, exclude_location=player.location):
+            record = scene_mod.run_offstage(
+                world, world.characters[group[0]].location, group, rng)
+            scenes.append(record)
+            moved = sum(1 for e in record.exchanges if e.disclosed)
+            dm_log.append(f"[offstage] {record.location}: "
+                          f"{len(group)} present, {moved} spoke (0 tokens)")
+            dm_log += [f"[revision] {n}" for n in record.notes]
 
     # 6. Filter to what the player could possibly perceive, THEN narrate.
     perceived = visible_events(world, events, player_id)
@@ -329,6 +289,7 @@ def play_turn(world: WorldState, player_action: str,
         hour=world.clock.hour,
         turn=world.clock.turn,
         time_of_day=describe_time(world.clock.day, world.clock.hour),
+        scenes=scenes,
     )
 
 

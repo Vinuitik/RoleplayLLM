@@ -72,6 +72,22 @@ class Belief(BaseModel):
     turn_acquired: int = 0
 
 
+class Event(BaseModel):
+    """A thing that happened, tagged with where — so perception can filter it.
+
+    Lives here rather than in turn.py because both the turn loop and the scene
+    relay produce them, and neither should have to import the other.
+    """
+
+    location: str
+    text: str
+    # Characters who directly took part; they always perceive it even if the
+    # location bookkeeping is imperfect.
+    actors: list[str] = Field(default_factory=list)
+    # Engine-side detail (dice arithmetic) — DM panel only, never narrated.
+    detail: str = ""
+
+
 class Evidence(BaseModel):
     """A physical trace of a fact, sitting at a location until someone finds it.
 
