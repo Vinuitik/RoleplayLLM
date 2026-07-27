@@ -285,7 +285,10 @@ def test_full_turn_advances_the_world_and_narrates_only_perceived_events(
 
     monkeypatch.setattr(llm, "get_narration", fake_narration)
 
-    result = turn_mod.play_turn(world, "ask Stagg about the ledgers", seed=7)
+    # establish_lore=False: this test is about the perception filter, and "ask
+    # Stagg about the ledgers" would otherwise trip just-in-time truth.
+    result = turn_mod.play_turn(world, "ask Stagg about the ledgers", seed=7,
+                                establish_lore=False)
 
     assert result.turn == 1
     assert world.clock.hour == pytest.approx(10.0)      # 8.0 + 2h

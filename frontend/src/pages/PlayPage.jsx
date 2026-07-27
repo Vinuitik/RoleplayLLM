@@ -4,8 +4,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { api, clearGameId, savedGameId, saveGameId } from '../api'
-import { Button } from '../components/atoms'
-import { ChatLog, Composer, DMPanel, StatusBar } from '../components/organisms'
+import { ChatLog, Composer, DMPanel, StartScreen, StatusBar } from '../components/organisms'
 
 export default function PlayPage() {
   const [gameId, setGameId] = useState(savedGameId())
@@ -21,6 +20,9 @@ export default function PlayPage() {
   const [dmOpen, setDmOpen] = useState(false)
   const [dm, setDm] = useState(null)
   const [truth, setTruth] = useState(null)
+  // Worldgen only: repairs made to the generated spec, and a progress line.
+  const [report, setReport] = useState([])
+  const [phase, setPhase] = useState('')
 
   // ── boot: resume the saved game, or offer a new one ──────────────────
   useEffect(() => {
@@ -68,6 +70,29 @@ export default function PlayPage() {
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
 
+  // Session Zero. Deliberately a distinct call with its own progress copy: it
+  // runs on the good model and takes real time, and a 40-second wait behind a
+  // button labelled "new game" looks like a hang rather than like work.
+  async function generateWorld(premise) {
+    if (!premise || busy) return
+    setBusy(true); setError(null); setReport([])
+    setPhase('Writing the cast, the facts, and who is lying about what…')
+    try {
+      const game = await api.generateGame(premise)
+      saveGameId(game.game_id)
+      setGameId(game.game_id)
+      setEntries([{ turn: 0, narration: game.narration, player_action: '' }])
+      setSuggestions(game.suggested_actions)
+      setTime(game.time_of_day)
+      setTurn(0)
+      // Repairs made to the generated spec. Surfaced rather than swallowed: a
+      // world that generated badly should be visible, not silently thin.
+      setReport(game.report || [])
+    } catch (e) {
+      setError(e.message)
+    } finally { setBusy(false); setPhase('') }
+  }
+
   async function act() {
     const text = draft.trim()
     if (!text || busy) return
@@ -112,21 +137,14 @@ export default function PlayPage() {
   if (!gameId) {
     return (
       <main className="shell shell--empty">
-        <div className="intro">
-          <h1>The Hand of the King</h1>
-          <p>
-            You are Orys Ashwood, nine days into the office. The king is dying and
-            everyone at the table is lying about something different.
-          </p>
-          <p className="intro__note">
-            The world moves whether or not you do. Nobody — including the narrator —
-            knows what is true except the engine.
-          </p>
-          <Button onClick={startGame} disabled={busy}>
-            {busy ? 'shuffling the deck…' : 'Take the office'}
-          </Button>
-          {error && <p className="error">{error}</p>}
-        </div>
+        <StartScreen
+          onStart={startGame}
+          onGenerate={generateWorld}
+          busy={busy}
+          error={error}
+          report={report}
+          phase={phase}
+        />
       </main>
     )
   }

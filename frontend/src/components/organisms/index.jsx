@@ -9,6 +9,102 @@ import {
   TurnControls,
 } from '../molecules'
 
+// ── Session Zero ────────────────────────────────────────────────────────────
+
+// The start screen. Two ways in: the hand-authored court, or generate a world
+// from a premise.
+//
+// Generation is deliberately presented as a SEPARATE, SLOWER thing rather than
+// hidden behind the same button — it runs on the good model, takes real time,
+// and building the world before play is the entire reason the engine can stay
+// consistent afterwards. Hiding that behind a spinner labelled "new game" would
+// make a 40-second wait look like a hang.
+export function StartScreen({ onStart, onGenerate, busy, error, report, phase }) {
+  const [premise, setPremise] = useState('')
+  const [mode, setMode] = useState('court')
+
+  const examples = [
+    'A siege in its fourth month. The garrison commander suspects his own quartermaster.',
+    'A generation ship, three decades out. The captain has been dead for a week and only two people know.',
+    'A mining town where the company doctor has started falsifying death certificates.',
+  ]
+
+  return (
+    <div className="intro">
+      <h1>{mode === 'court' ? 'The Hand of the King' : 'Build a world'}</h1>
+
+      <div className="intro__tabs">
+        <Button variant={mode === 'court' ? 'primary' : 'ghost'}
+                onClick={() => setMode('court')} disabled={busy}>
+          The court
+        </Button>
+        <Button variant={mode === 'generate' ? 'primary' : 'ghost'}
+                onClick={() => setMode('generate')} disabled={busy}>
+          Generate a world
+        </Button>
+      </div>
+
+      {mode === 'court' ? (
+        <>
+          <p>
+            You are Orys Ashwood, nine days into the office. The king is dying and
+            everyone at the table is lying about something different.
+          </p>
+          <p className="intro__note">
+            The world moves whether or not you do. Nobody — including the narrator —
+            knows what is true except the engine.
+          </p>
+          <Button onClick={onStart} disabled={busy}>
+            {busy ? 'shuffling the deck…' : 'Take the office'}
+          </Button>
+        </>
+      ) : (
+        <>
+          <p>
+            Describe a situation with a lie in it. The generator builds the
+            characters, the facts, who believes what, and what they conceal —
+            all of it before you take a single turn.
+          </p>
+          <Field
+            value={premise}
+            onChange={setPremise}
+            onSubmit={() => premise.trim() && onGenerate(premise.trim())}
+            disabled={busy}
+            placeholder="A premise. Two sentences is plenty."
+          />
+          <ul className="intro__examples">
+            {examples.map((example) => (
+              <li key={example}>
+                <button className="link" disabled={busy}
+                        onClick={() => setPremise(example)}>
+                  {example}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <Button onClick={() => onGenerate(premise.trim())}
+                  disabled={busy || !premise.trim()}>
+            {busy ? 'building the world…' : 'Build it'}
+          </Button>
+          {busy && (
+            <p className="intro__note">
+              <Spinner label="generating" /> {phase || 'This runs on the good model and takes a while. It happens once.'}
+            </p>
+          )}
+        </>
+      )}
+
+      {error && <p className="error">{error}</p>}
+      {report?.length > 0 && (
+        <details className="intro__report">
+          <summary>{report.length} note{report.length === 1 ? '' : 's'} from generation</summary>
+          <ul>{report.map((line, i) => <li key={i}>{line}</li>)}</ul>
+        </details>
+      )}
+    </div>
+  )
+}
+
 export function ChatLog({ entries, busy }) {
   const endRef = useRef(null)
 

@@ -22,7 +22,8 @@ import random
 
 from pydantic import BaseModel
 
-from . import disclosure, evidence as evidence_mod, llm, scene as scene_mod
+from . import (disclosure, evidence as evidence_mod, llm, lore,
+               scene as scene_mod)
 from .actions import default_table
 from .gametime import ARCHETYPE_HOURS, coerce_hours, describe_time
 from .models import Event, ModifierKind, Stance, WorldState
@@ -210,13 +211,18 @@ def visible_events(world: WorldState, events: list[Event], char_id: str) -> list
 def play_turn(world: WorldState, player_action: str,
               seed: int | str | None = None,
               enable_conversations: bool = True,
-              scene_passes: int = scene_mod.MAX_PASSES) -> TurnResult:
+              scene_passes: int = scene_mod.MAX_PASSES,
+              establish_lore: bool = True) -> TurnResult:
     """One full turn. `world` is mutated in place; snapshot before calling if you
     want to rewind.
 
     `scene_passes` is the cost dial for the one expensive thing in the turn: the
     onstage group conversation costs `people_present x passes` cheap calls. Set
     it to 1 for a fast turn, 0 to fall back to one-line-each NPC reactions.
+
+    `establish_lore` controls just-in-time truth: when the player asks about
+    something worldgen never covered, the engine establishes it as a real fact
+    before anyone opens their mouth. See lore.py.
     """
     player_id = world.player_id
     player = world.characters[player_id]
@@ -247,6 +253,20 @@ def play_turn(world: WorldState, player_action: str,
     # 3. Resolve the player's attempt.
     if referee is not None:
         events += _resolve_player_action(world, player_action, referee, rng, dm_log)
+
+    # 3b. GAP FILLING. If the player asked about something the record does not
+    #     cover, establish the truth NOW — a real fact, with a real is_true, held
+    #     by whoever would plausibly know it, plus the plausible lie about it.
+    #
+    #     This runs BEFORE anyone speaks, which is the whole point: by the time
+    #     an NPC decides what to say, the answer exists in the world and they
+    #     either hold it or they don't. The alternative — letting a model invent
+    #     a number in its prose — puts the "truth" in a transcript where nobody
+    #     else in the world knows it and the next character asked contradicts it.
+    if establish_lore and _looks_like_a_question(player_action):
+        if not lore.has_coverage(world, player_action):
+            _true_id, _false_id, lore_log = lore.establish(world, player_action, rng)
+            dm_log += lore_log
 
     # 4. ONSTAGE. The player's room is a scene, not a queue of monologues: each
     #    NPC present speaks having heard everyone before them. This is the only
@@ -339,6 +359,23 @@ def _resolve_player_action(world: WorldState, action_text: str, referee,
                                 actors=[world.player_id]))
 
     return events
+
+
+# Question words that suggest the player is asking about the world rather than
+# acting on it. Deliberately generous: a false positive costs one cheap coverage
+# check (usually a local string match, no model call at all), while a false
+# negative means a question goes unanswered and the world looks thin.
+_QUESTION_MARKERS = ("how many", "how much", "how strong", "how far", "how long",
+                     "what is", "what are", "who is", "who are", "where is",
+                     "where are", "when did", "when will", "why did", "ask ",
+                     "asks ", "enquire", "inquire", "question ")
+
+
+def _looks_like_a_question(action_text: str) -> bool:
+    text = (action_text or "").strip().lower()
+    if not text:
+        return False
+    return "?" in text or any(marker in text for marker in _QUESTION_MARKERS)
 
 
 def _actor_stat_for(archetype: str, opposing_stat: str,

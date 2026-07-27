@@ -22,15 +22,29 @@ export const api = {
 
   newGame: (title = '', seed = '') =>
     request('/games', { method: 'POST', body: JSON.stringify({ title, seed }) }),
+
+  // Session Zero. Slow on purpose — it builds a whole world before play starts,
+  // which is what stops the engine inventing entities mid-game. Given its own
+  // long timeout because it runs on the good model and is not a turn.
+  generateGame: (premise, { characters = 7, facts = 14, saveAs = '' } = {}) =>
+    request('/games/generate', {
+      method: 'POST',
+      body: JSON.stringify({ premise, characters, facts, save_as: saveAs }),
+    }),
   listGames: () => request('/games'),
   deleteGame: (id) => request(`/games/${id}`, { method: 'DELETE' }),
   history: (id) => request(`/games/${id}/history`),
 
-  takeTurn: (id, text, conversations = true) =>
+  takeTurn: (id, text, { conversations = true, scenePasses = 3 } = {}) =>
     request(`/games/${id}/turn`, {
       method: 'POST',
-      body: JSON.stringify({ text, conversations }),
+      body: JSON.stringify({ text, conversations, scene_passes: scenePasses }),
     }),
+
+  // Diagnostics: every model call in this game, chronologically.
+  telemetry: (id) => request(`/games/${id}/telemetry`),
+  telemetryHealth: (id = '') =>
+    request(`/telemetry/health${id ? `?game_id=${id}` : ''}`),
 
   rewind: (id, turn) =>
     request(`/games/${id}/rewind/${turn}`, { method: 'POST' }),

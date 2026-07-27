@@ -70,12 +70,19 @@ detail.**
 
 3. PLAYER       resolution.resolve(stat, difficulty, rng)
                 Dice decide. The referee only set the problem.
+                A `discovery`-tagged action also searches for evidence here.
 
-4. NPC TURNS    turn.npc_turn() for everyone in the player's location
-                project → intention JSON → dice → mutate state
+4. ONSTAGE      scene.run_scene(mode=ONSTAGE) for the player's room
+                A GROUP RELAY, not a queue of monologues. Runs in passes;
+                within a pass each person speaks having heard everyone
+                before them. THE ONLY EXPENSIVE STEP:
+                `people_present × passes` cheap calls.
 
-5. CONVERSATION turn.converse() for at most one NPC pair elsewhere
-                Information moves through the court without the player.
+5. OFFSTAGE     scene.run_offstage() for rooms with pressure
+                ZERO TOKENS. Disclosure, propagation and belief revision
+                are all pure engine code, so a conversation the player
+                cannot perceive needs no model at all. Produces a
+                SceneRecord the player may later discover.
 
 6. FILTER       turn.visible_events(world, events, player_id)
                 ◄── THE STEP PEOPLE LEAVE OUT. Without it everything above
@@ -85,6 +92,17 @@ detail.**
                 Last, and fed only already-decided, already-filtered facts.
                 A mouth, not a brain.
 ```
+
+**There is no orchestration framework.** No LangGraph, no agent runtime. The
+sequence above *is* the graph, written out as Python. Each head is a function
+taking a `ProjectedWorld` and returning a validated Pydantic model, and the only
+shared state is `WorldState` — which no model ever sees.
+
+That is deliberate. A graph framework's main affordance is passing context along
+edges, and this design's core invariant is that the heads must **never** share
+context: every boundary is a `project()` call that *deletes* information. A tool
+that makes state-passing easy would make the one forbidden thing easy to do by
+accident.
 
 ---
 
@@ -99,8 +117,16 @@ detail.**
 | `resolution.py` | Dice, four outcome degrees, difficulty ladder | no |
 | `plots.py` | `tick()`, plot advance, exposure, `propagate()` | no |
 | `gametime.py` | Phase of day, `coerce_hours()` | no |
+| `disclosure.py` | Whether a character actually says what they meant to | no |
+| `revision.py` | Contradiction, belief contests, misinformation | no |
+| `evidence.py` | Physical traces; the only route to certainty | no |
+| `actions.py` | The action vocabulary, loaded from data | no |
+| `combat.py` | Engagements (Lanchester linear law) | no |
+| `scene.py` | The group relay; onstage vs offstage | via `llm.py` |
+| `telemetry.py` | One row per model call; violation counting | no |
+| `worldgen.py` | Session Zero — builds a world before play | via `llm.py` |
 | `llm.py` | Wrapper client + every prompt + reply validation | **yes — the only one** |
-| `turn.py` | The loop, NPC turns, conversation, `visible_events()` | via `llm.py` |
+| `turn.py` | The loop, NPC turns, `visible_events()` | via `llm.py` |
 | `store.py` | SQLite snapshots, rewind, truth report | no |
 | `main.py` | FastAPI surface | no |
 
@@ -302,21 +328,38 @@ Run: `cd services/engine && python -m pytest tests/ -q`
 
 ---
 
-## Open design question — NOT yet implemented
+## The knowledge economy — how a mind actually changes
 
-**Trust / evidence / hesitation.**
+Four mechanisms, all pure engine code, no model involved in any of them.
 
-Live play reproduced the problem on turn one: Mycella Ferrow, a *conspirator*,
-volunteered the entire Dragonstone conspiracy to Orys at confidence 0.9 the first
-time he spoke to her. Nothing in the model makes a character reluctant.
+**1. Disclosure is gated.** `P = candor + trust(room) - risk(fact)`. The model
+proposes *which* belief a character reaches for; the engine decides whether it
+comes out. Trust is read at the room's **minimum**, so one enemy present
+silences a speaker — which is what makes the composition of a scene something
+the player can manipulate. The floor is 0.02, never 0: secrets get out by slip
+far more often than by decision.
 
-Unconstrained propagation collapses the court into omniscient opponents within a
-few turns. The open questions:
+**2. Talk has a ceiling.** Assertion can never produce `KNOWS` and never exceeds
+0.6, however many mouths repeat it. Without this every conversation is a step
+toward everyone knowing everything.
 
-- What gates disclosure? Trust/disposition threshold, a `guile` contest, risk
-  weighted by `hides`?
-- Should suspicion require **evidence** — a separate trackable object — rather
-  than assertion alone?
-- Does hesitation change over a playthrough, and driven by what?
+**3. Evidence is the only route to certainty.** A physical object at a location,
+never projected — *found*, not perceived. This inverts the economics: leaks can
+be generous, because a scheme that advances loudly leaves more trail instead of
+solving itself.
 
-Deliberately parked for design discussion before implementation.
+**4. Contradiction, so a mind can be changed rather than only added to.** Facts
+declare what they are incompatible with. `truthful: false` asserts that
+contradiction — Ollivar, who knows the king was poisoned, says he died of age,
+and the listener acquires that *specific false belief*. The pairing is authored
+seed data, so "invent a convincing lie" stays inexpressible, exactly as
+"invent a fact" already was.
+
+Receiving a claim contests whatever it contradicts, weighted on both sides by
+the listener's regard for the source. **Something seen first-hand carries full
+credibility (1.0); hearsay from someone despised carries a third of it.** The
+incoming claim can lose, and losing shakes a belief rather than erasing it —
+people get uncertain long before they change their minds.
+
+The engine never reads `is_true` to do any of this. A false belief defends
+itself exactly as well as a true one.

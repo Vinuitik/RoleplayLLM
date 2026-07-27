@@ -57,6 +57,25 @@ class Fact(BaseModel):
     # revision.contradictions_of.
     contradicts: list[str] = Field(default_factory=list)
 
+    # ── amendment ────────────────────────────────────────────────────────
+    # Most facts are propositions about what happened and can never change:
+    # "the king was poisoned" is true forever or was never true. A few are
+    # STANDING QUANTITIES — "the Watch numbers 2,100 men" — which are true today
+    # and which events should be able to move.
+    #
+    # Immutable is the DEFAULT and the lock is opt-in-only. An LLM has no route
+    # to set this flag: it is authored in the seed, or set by worldgen/lore at
+    # creation and never afterwards. See lore.amend for why that matters — a
+    # model able to mark a fact mutable could rewrite the murder it committed.
+    mutable: bool = False
+    # Hard lock. Even a mutable fact refuses amendment while this is set, which
+    # is what lets a scenario pin load-bearing numbers that must not drift.
+    locked: bool = False
+    # Bumped on every amendment. Beliefs acquired before the current revision
+    # are STALE — the holder knows an old number — which is how amendment stays
+    # honest instead of silently updating everybody's mind at once.
+    revision: int = 0
+
 
 class Belief(BaseModel):
     """One edge of the character×fact join table."""
@@ -270,6 +289,11 @@ class WorldState(BaseModel):
     # impossible in this world. Worldgen writes it; play-time planning reads it,
     # so the planner references an established world instead of inventing one.
     canon: str = ""
+    # Normalised question -> fact id, for truths established mid-game (lore.py).
+    # This is what makes just-in-time truth IDEMPOTENT: asking three characters
+    # the same thing interrogates one fact instead of minting three. Without it,
+    # on-demand generation is just a slower way to be inconsistent.
+    lore_index: dict[str, str] = Field(default_factory=dict)
     # Append-only record of what actually happened, for the truth report.
     chronicle: list[str] = Field(default_factory=list)
 
