@@ -1,0 +1,72 @@
+# RoleplayLLM.
+#
+# Note what is NOT in here: the host-wrapper. It runs on the host on purpose —
+# it shells out to the `claude` CLI so Claude calls bill the subscription rather
+# than metered API tokens, and a container would have neither the CLI nor its
+# logged-in credentials. Services reach it via host.docker.internal (WRAPPER_URL).
+#
+#   docker compose up -d                      # engine + frontend
+#   docker compose --profile tunnel up -d     # + a free *.trycloudflare.com URL
+#
+# Start host-wrapper/start.bat separately, or every LLM call degrades gracefully
+# to "no model available" and you get dice with no prose.
+
+services:
+  engine:
+    build: ./services/engine
+    restart: unless-stopped
+    ports:
+      # Loopback only. The browser reaches the engine through nginx, never
+      # directly; this is published purely so `npm run dev` and curl work.
+      - "127.0.0.1:${ENGINE_PORT:-8090}:8090"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////data/rp.db}
+      - WRAPPER_URL=${WRAPPER_URL:-http://host.docker.internal:5501}
+      - RP_SEED=${RP_SEED:-}
+      - LLM_REQUEST_TIMEOUT_S=${LLM_REQUEST_TIMEOUT_S:-180}
+    volumes:
+      # Named volume, not a bind: the SQLite file must survive `compose down`
+      # and rebuilds. This is where every snapshot (and therefore rewind) lives.
+      - engine_data:/data
+    extra_hosts:
+      # Native Linux Docker doesn't provide host.docker.internal — only Docker
+      # Desktop does. Mapping it to the gateway keeps the wrapper reachable on
+      # both, which matters because this repo runs on Windows and the sibling
+      # project's stack runs on Linux.
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8091}:8081"
+    depends_on:
+      engine:
+        condition: service_healthy
+
+  # Free public URL, no domain and no account needed: a quick tunnel prints a
+  # random https://<words>.trycloudflare.com on startup. That is the address you
+  # open on your phone to install the PWA — it gives you real TLS, which is
+  # required for service workers on anything that isn't localhost.
+  #
+  #   docker compose --profile tunnel up -d
+  #   docker compose logs cloudflared | grep trycloudflare.com
+  #
+  # The URL changes on every restart. Set CLOUDFLARE_TUNNEL_TOKEN in .env and
+  # swap the command for `tunnel run --token ...` when you want a stable one.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate --url http://frontend:8081
+    depends_on:
+      - frontend
+
+volumes:
+  engine_data:
