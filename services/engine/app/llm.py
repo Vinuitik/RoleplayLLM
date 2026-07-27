@@ -19,13 +19,18 @@ for* and *what we refuse to accept back*. Three rules run through all of it:
 
 from __future__ import annotations
 
+import json
 import os
 
 import requests
 from pydantic import BaseModel, Field, ValidationError
 
-from .gametime import ARCHETYPE_HOURS
+from . import telemetry
+from .gametime import ARCHETYPE_HOURS, coerce_hours
 from .projection import ProjectedWorld
+from .resolution import DIFFICULTY
+
+DIFFICULTY_LABELS = set(DIFFICULTY)
 
 WRAPPER_URL = os.environ.get("WRAPPER_URL", "http://host.docker.internal:5501")
 REQUEST_TIMEOUT_S = int(os.environ.get("LLM_REQUEST_TIMEOUT_S", "180"))
@@ -269,24 +274,93 @@ line, each starting with "> ". Do not invent events, people, or information."""
 
 def get_intention(view: ProjectedWorld, situation_note: str = "") -> Intention:
     """Ask an NPC what it intends. Degrades to observing rather than failing —
-    a provider outage should cost the world some colour, not end the session."""
-    try:
-        raw = complete_json(
-            npc_intention_prompt(view, situation_note), NPC_SYSTEM,
-            required_keys=("action",), capability="text", priority="medium")
-        return Intention.model_validate(raw)
-    except (LLMUnavailable, ValidationError):
-        return Intention(action="observe", rationale="(no model available)")
+    a provider outage should cost the world some colour, not end the session.
+
+    Every way this call can go wrong is COUNTED, not just repaired. Silent
+    repair is precisely what makes model degradation invisible: an out-of-range
+    belief index is dropped and the turn carries on, so a model that has started
+    hallucinating indices looks exactly like a quiet NPC. See telemetry.py.
+    """
+    prompt = npc_intention_prompt(view, situation_note)
+    with telemetry.timed("intention", prompt, char_id=view.self_name) as slot:
+        try:
+            raw = complete_json(prompt, NPC_SYSTEM, required_keys=("action",),
+                                capability="text", priority="medium")
+        except LLMUnavailable as exc:
+            slot.finish("", ok=False, error=str(exc), violations=["unavailable"])
+            return Intention(action="observe", rationale="(no model available)")
+        except ValidationError as exc:
+            slot.finish("", ok=False, error=str(exc)[:500],
+                        violations=["schema"])
+            return Intention(action="observe", rationale="(malformed reply)")
+
+        violations = _intention_violations(raw, view)
+        slot.finish(json.dumps(raw)[:8000],
+                    provider=raw.get("_provider", ""),
+                    model=raw.get("_model", ""),
+                    violations=violations)
+        try:
+            return Intention.model_validate(raw)
+        except ValidationError:
+            return Intention(action="observe", rationale="(malformed reply)")
+
+
+def _intention_violations(raw: dict, view: ProjectedWorld) -> list[str]:
+    """Everything the engine is about to silently forgive, named.
+
+    These are not errors — the turn survives all of them. They are the signal
+    that a model has drifted, and they are invisible without being counted.
+    """
+    found: list[str] = []
+    index = raw.get("reveals_belief", NO_FACT)
+    if isinstance(index, int) and index != NO_FACT:
+        if not (0 <= index < len(view.beliefs)):
+            # The belief-index protocol working as designed — and worth knowing
+            # about, because a rising rate here means a model losing the plot.
+            found.append("belief_index_out_of_range")
+    elif index != NO_FACT:
+        found.append("belief_index_not_an_int")
+
+    action = str(raw.get("action", "")).strip().lower()
+    if action and action not in ARCHETYPE_HOURS:
+        found.append("unknown_action")
+
+    hours = raw.get("hours_elapsed")
+    if hours is not None:
+        _value, note = coerce_hours(hours, action or "speak")
+        if note:
+            found.append("bad_hours")
+    return found
 
 
 def get_referee(view: ProjectedWorld, action_text: str) -> RefereeCall:
-    try:
-        raw = complete_json(
-            referee_prompt(view, action_text), REFEREE_SYSTEM,
-            required_keys=("difficulty",), capability="text", priority="high")
-        return RefereeCall.model_validate(raw)
-    except (LLMUnavailable, ValidationError):
-        return RefereeCall(reasoning="(no model available — default difficulty)")
+    prompt = referee_prompt(view, action_text)
+    with telemetry.timed("referee", prompt) as slot:
+        try:
+            raw = complete_json(prompt, REFEREE_SYSTEM,
+                                required_keys=("difficulty",),
+                                capability="text", priority="high")
+        except LLMUnavailable as exc:
+            slot.finish("", ok=False, error=str(exc), violations=["unavailable"])
+            return RefereeCall(reasoning="(no model available — default difficulty)")
+        except ValidationError as exc:
+            slot.finish("", ok=False, error=str(exc)[:500], violations=["schema"])
+            return RefereeCall(reasoning="(malformed reply — default difficulty)")
+
+        violations = []
+        if str(raw.get("difficulty", "")).strip().lower() not in DIFFICULTY_LABELS:
+            if not isinstance(raw.get("difficulty"), (int, float)):
+                violations.append("unknown_difficulty")
+        if raw.get("hours_elapsed") is not None:
+            _v, note = coerce_hours(raw.get("hours_elapsed"),
+                                    str(raw.get("archetype", "speak")))
+            if note:
+                violations.append("bad_hours")
+        slot.finish(json.dumps(raw)[:8000], violations=violations)
+        try:
+            return RefereeCall.model_validate(raw)
+        except ValidationError:
+            return RefereeCall(reasoning="(malformed reply — default difficulty)")
 
 
 SCENE_REPORT_SYSTEM = (
@@ -329,9 +403,23 @@ def get_narration(view: ProjectedWorld, resolved_events: list[str],
     """Narration is the one call the player actually reads, so it runs on the
     quality-first chain. If it fails we fall back to the raw event list — ugly,
     but the game continues and nothing is fabricated."""
-    try:
-        return complete_text(narrator_prompt(view, resolved_events, player_action),
-                             NARRATOR_SYSTEM, capability="narrate", priority="high")
-    except LLMUnavailable:
-        lines = "\n".join(f"- {e}" for e in resolved_events)
-        return f"[narrator unavailable — raw events]\n{lines}"
+    prompt = narrator_prompt(view, resolved_events, player_action)
+    with telemetry.timed("narration", prompt) as slot:
+        try:
+            text = complete_text(prompt, NARRATOR_SYSTEM,
+                                 capability="narrate", priority="high")
+        except LLMUnavailable as exc:
+            slot.finish("", ok=False, error=str(exc), violations=["unavailable"])
+            lines = "\n".join(f"- {e}" for e in resolved_events)
+            return f"[narrator unavailable — raw events]\n{lines}"
+
+        # The narrator's two failure modes, both silent and both worth counting:
+        # ignoring the suggestion format, and padding well past the word limit
+        # (the reliable early symptom of a fallback to a weaker model).
+        violations = []
+        if "> " not in text:
+            violations.append("no_suggestions")
+        if len(text) > 3000:
+            violations.append("overlong_narration")
+        slot.finish(text, violations=violations)
+        return text

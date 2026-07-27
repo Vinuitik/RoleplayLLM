@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import llm, store
+from . import llm, store, telemetry
 from .models import WorldState
 from .projection import project
 from .turn import play_turn
@@ -38,6 +38,7 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     store.init_db()
+    telemetry.init_db()
 
 
 def load_seed_world() -> WorldState:
@@ -57,8 +58,13 @@ class NewGame(BaseModel):
 
 class Action(BaseModel):
     text: str
-    # Conversations cost two extra LLM calls a turn; togglable for slow providers.
+    # Offstage scenes cost ZERO tokens, so this is no longer a budget switch —
+    # it exists to freeze the wider world while debugging one room.
     conversations: bool = True
+    # The one real cost dial: the onstage group scene runs
+    # `people_present x scene_passes` cheap calls. 1 for a fast turn, 0 to fall
+    # back to one-line-each NPC reactions.
+    scene_passes: int = 3
 
 
 # ── health ──────────────────────────────────────────────────────────────────
@@ -128,11 +134,38 @@ def take_turn(game_id: str, action: Action) -> dict:
     if world is None:
         raise HTTPException(404, "no such game")
 
-    result = play_turn(world, action.text, seed=store.get_seed(game_id),
-                       enable_conversations=action.conversations)
+    # Every model call inside this block is tagged with (game, turn) and given a
+    # sequence number, so the log reads back as the turn actually ran.
+    with telemetry.turn_context(game_id, world.clock.turn + 1):
+        result = play_turn(world, action.text, seed=store.get_seed(game_id),
+                           enable_conversations=action.conversations,
+                           scene_passes=action.scene_passes)
     store.save_snapshot(game_id, world, result.narration, result.dm_log,
                         action.text)
     return result.model_dump()
+
+
+@app.get("/games/{game_id}/telemetry")
+def game_telemetry(game_id: str, limit: int = 500) -> dict:
+    """Every model call in this game, in the order it happened.
+
+    Grouped by game and ordered by (turn, seq), so a session reads back
+    chronologically — interleaved across NPCs, referee and narrator, exactly as
+    it ran. This is the view for "something broke on turn 12, what did the
+    models actually see and say".
+    """
+    return {"game_id": game_id, "calls": telemetry.game_log(game_id, limit)}
+
+
+@app.get("/telemetry/health")
+def telemetry_health(game_id: str = "") -> dict:
+    """Aggregates for 'has it got worse, and where'.
+
+    Breakdowns rather than a single score, because a quality drop is almost
+    always localised to one provider, one call kind, or one prompt-length band —
+    and an average is exactly what hides that.
+    """
+    return telemetry.health(game_id or None)
 
 
 @app.post("/games/{game_id}/rewind/{to_turn}")
