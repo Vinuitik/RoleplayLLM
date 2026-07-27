@@ -23,6 +23,7 @@ import random
 from pydantic import BaseModel
 
 from . import disclosure, evidence as evidence_mod, llm, scene as scene_mod
+from .actions import default_table
 from .gametime import ARCHETYPE_HOURS, coerce_hours, describe_time
 from .models import Event, ModifierKind, Stance, WorldState
 from .numerics import add_modifier
@@ -35,6 +36,18 @@ from .scene import Mode, SceneRecord
 # How many offstage scenes may run in one turn. They cost zero tokens, so this
 # is a legibility cap on the DM panel rather than a budget.
 MAX_OFFSTAGE_SCENES = 3
+
+
+def world_actions(world: WorldState):
+    """The action vocabulary this world speaks.
+
+    A scenario may ship its own table; one that does not gets the default court
+    vocabulary, so nothing that worked before needs a new file to keep working.
+    """
+    if world.actions:
+        from .actions import from_rows
+        return from_rows([a.model_dump() for a in world.actions])
+    return default_table()
 
 
 class TurnResult(BaseModel):
@@ -117,12 +130,15 @@ def _speak(world: WorldState, speaker_id: str, view, intention,
 
 def _contest(world: WorldState, actor_id: str, target_id: str,
              action: str, rng: random.Random) -> Outcome:
-    stat_by_action = {"scheme": "guile", "confront": "presence", "search": "wits"}
+    """One character moves against another. Which stats are involved is read
+    from the scenario's action table, not hardcoded here — that dict was one of
+    the three things making this a court engine rather than a generic one."""
+    table = world_actions(world)
+    row = table.get(action)
     actor = world.characters[actor_id]
     target = world.characters[target_id]
-    stat_name = stat_by_action.get(action, "wits")
-    return resolve_opposed(stat_of(actor.stats, stat_name),
-                           stat_of(target.stats, "resolve"), rng)
+    return resolve_opposed(stat_of(actor.stats, row.actor_stat),
+                           stat_of(target.stats, row.opposing_stat), rng)
 
 
 def _resolve_target(world: WorldState, name: str, location: str) -> str | None:
@@ -212,13 +228,14 @@ def play_turn(world: WorldState, player_action: str,
     referee = llm.get_referee(view, player_action) if player_action.strip() else None
 
     if referee is not None:
-        hours, note = coerce_hours(referee.hours_elapsed, referee.archetype)
+        hours, note = coerce_hours(referee.hours_elapsed, referee.archetype,
+                                   table=world_actions(world))
         if note:
             dm_log.append(f"[time] {note}")
         dm_log.append(f"[referee] {referee.difficulty} vs {referee.opposing_stat} "
                       f"({referee.archetype}, {hours}h) — {referee.reasoning}")
     else:
-        hours = ARCHETYPE_HOURS["wait"]
+        hours = world_actions(world).hours_for("wait")
         dm_log.append(f"[time] no action given; {hours}h pass")
 
     # 2. The world moves, whether or not the player did anything.
@@ -298,8 +315,9 @@ def _resolve_player_action(world: WorldState, action_text: str, referee,
     """Known-shape actions could resolve by table; novel ones get the referee's
     difficulty. Either way the DICE decide — the referee only set the problem."""
     player = world.characters[world.player_id]
+    table = world_actions(world)
     difficulty = difficulty_from_label(referee.difficulty)
-    stat_name = _actor_stat_for(referee.opposing_stat)
+    stat_name = _actor_stat_for(referee.archetype, referee.opposing_stat, table)
     from .resolution import resolve
     outcome = resolve(stat_of(player.stats, stat_name), difficulty, rng)
     dm_log.append(f"[player] {outcome.detail}")
@@ -314,7 +332,7 @@ def _resolve_player_action(world: WorldState, action_text: str, referee,
     # Searching is how certainty is earned. Evidence is never perceived by
     # standing in the room — the trail a scheme leaves sits there until somebody
     # actually looks, and looking is a check like any other.
-    if (referee.archetype or "").strip().lower() == "search":
+    if table.has_tag(referee.archetype, "discovery"):
         for line in evidence_mod.discover(world, world.player_id, outcome, rng):
             dm_log.append(f"[found] {line}")
             events.append(Event(location=player.location, text=line,
@@ -323,8 +341,20 @@ def _resolve_player_action(world: WorldState, action_text: str, referee,
     return events
 
 
-def _actor_stat_for(opposing_stat: str) -> str:
-    """The referee names what RESISTS; the player rolls the natural counterpart."""
+def _actor_stat_for(archetype: str, opposing_stat: str,
+                    table=None) -> str:
+    """What the PLAYER rolls. Read from the action table by archetype.
+
+    Previously a hardcoded inversion of the opposing stat, which quietly assumed
+    a court vocabulary: it mapped "guile resists" to "roll wits" because that is
+    what intrigue looks like. A battle wants "fortification resists" to mean
+    "roll might", and that is a data question, not a code one. The old inversion
+    survives only as the fallback for an archetype the table does not know.
+    """
+    table = table or default_table()
+    row = table.get(archetype)
+    if row.id in table.actions:
+        return row.actor_stat
     return {"guile": "wits", "wits": "guile", "presence": "presence",
             "might": "might", "resolve": "presence"}.get(
         (opposing_stat or "").strip().lower(), "wits")

@@ -1,0 +1,18 @@
+{
+  "_comment": "The action vocabulary, as DATA. This used to be three hardcoded dicts in two modules: ARCHETYPE_HOURS in gametime.py, stat_by_action in turn._contest, and the opposing-stat inversion in turn._actor_stat_for. Those three dicts WERE the scenario lock-in — everything else in the engine is already scenario-agnostic. Moving them here is what makes 'resolve a battle' a different actions.json rather than a different codebase.",
+
+  "_comment_fields": "id: what the referee returns. hours: default elapsed time when the model omits or mangles hours_elapsed. actor_stat: what the ACTOR rolls. opposing_stat: what RESISTS. tags: free-form, read by optional subsystems — 'discovery' enables evidence searching, 'engagement' routes to combat.resolve_engagement. Unknown tags are ignored, so adding one never breaks an existing scenario.",
+
+  "actions": [
+    { "id": "speak",    "hours": 0.25, "actor_stat": "presence", "opposing_stat": "resolve",   "tags": ["social"] },
+    { "id": "converse", "hours": 0.75, "actor_stat": "presence", "opposing_stat": "resolve",   "tags": ["social"] },
+    { "id": "observe",  "hours": 0.5,  "actor_stat": "wits",     "opposing_stat": "guile",     "tags": [] },
+    { "id": "search",   "hours": 2.0,  "actor_stat": "wits",     "opposing_stat": "guile",     "tags": ["discovery"] },
+    { "id": "move",     "hours": 1.0,  "actor_stat": "might",    "opposing_stat": "resolve",   "tags": ["movement"] },
+    { "id": "travel",   "hours": 12.0, "actor_stat": "might",    "opposing_stat": "resolve",   "tags": ["movement"] },
+    { "id": "scheme",   "hours": 3.0,  "actor_stat": "guile",    "opposing_stat": "wits",      "tags": ["social"] },
+    { "id": "confront", "hours": 0.5,  "actor_stat": "presence", "opposing_stat": "resolve",   "tags": ["social"] },
+    { "id": "rest",     "hours": 8.0,  "actor_stat": "resolve",  "opposing_stat": "resolve",   "tags": [] },
+    { "id": "wait",     "hours": 4.0,  "actor_stat": "wits",     "opposing_stat": "wits",      "tags": [] }
+  ]
+}

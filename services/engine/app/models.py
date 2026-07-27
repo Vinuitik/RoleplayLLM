@@ -72,6 +72,20 @@ class Belief(BaseModel):
     turn_acquired: int = 0
 
 
+class ActionRow(BaseModel):
+    """One entry of a scenario's action vocabulary, carried on the world itself.
+
+    Mirrors actions.Action but lives here so WorldState can be validated without
+    importing the loader. See actions.py for why this is data and not code.
+    """
+
+    id: str
+    hours: float = 1.0
+    actor_stat: str = "wits"
+    opposing_stat: str = "resolve"
+    tags: list[str] = Field(default_factory=list)
+
+
 class Event(BaseModel):
     """A thing that happened, tagged with where — so perception can filter it.
 
@@ -248,6 +262,14 @@ class WorldState(BaseModel):
     modifiers: list[Modifier] = Field(default_factory=list)
     # Physical traces lying around the world. Never projected — found, not seen.
     evidence: dict[str, Evidence] = Field(default_factory=dict)
+    # This scenario's action vocabulary. Empty = use the default court table.
+    # A battle scenario ships a different list here and needs no engine change;
+    # see actions.py for why these rows were the only scenario-specific code.
+    actions: list[ActionRow] = Field(default_factory=list)
+    # Free text handed to the orchestrator every turn: tone, genre logic, what is
+    # impossible in this world. Worldgen writes it; play-time planning reads it,
+    # so the planner references an established world instead of inventing one.
+    canon: str = ""
     # Append-only record of what actually happened, for the truth report.
     chronicle: list[str] = Field(default_factory=list)
 

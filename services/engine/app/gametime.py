@@ -30,19 +30,16 @@ MAX_HOURS = 72.0      # three days — long journeys still fit in one turn
 
 # Per-archetype fallback, used when the model omits or mangles the field. These
 # are also quoted in the prompt so its estimates land in a familiar range.
-ARCHETYPE_HOURS = {
-    "speak": 0.25,      # one exchange
-    "converse": 0.75,   # a real conversation
-    "observe": 0.5,     # watching a room, reading a face
-    "search": 2.0,      # tossing a study for the ledger
-    "move": 1.0,        # crossing the keep
-    "travel": 12.0,     # leaving the city
-    "scheme": 3.0,      # arranging something quietly
-    "confront": 0.5,
-    "rest": 8.0,        # the deliberate time-jump
-    "wait": 4.0,
-}
-DEFAULT_ARCHETYPE = "speak"
+#
+# NO LONGER AUTHORED HERE. This dict used to be the action vocabulary, hardcoded
+# — and it was one of exactly three dicts that made this engine a court-intrigue
+# engine rather than a generic one. It is now derived from the scenario's action
+# table (see actions.py), and kept as a module-level name only so existing
+# callers and tests that read `ARCHETYPE_HOURS["wait"]` keep working.
+from .actions import DEFAULT_ACTION as DEFAULT_ARCHETYPE  # noqa: E402
+from .actions import default_table  # noqa: E402
+
+ARCHETYPE_HOURS = {a.id: a.hours for a in default_table().actions.values()}
 
 PHASES = (
     (5.0, "night"),        # 00:00-05:00
@@ -72,14 +69,23 @@ def describe_time(day: int, hour: float) -> str:
     return f"day {day}, {phase_of_day(hour)} ({hours:02d}:{minutes:02d})"
 
 
-def coerce_hours(proposed, archetype: str = DEFAULT_ARCHETYPE) -> tuple[float, str | None]:
+def coerce_hours(proposed, archetype: str = DEFAULT_ARCHETYPE,
+                 table=None) -> tuple[float, str | None]:
     """Turn whatever the model returned into a usable number of hours.
 
     Returns (hours, note) where note is a DM-panel warning when the proposal had
     to be corrected — so a model that keeps returning nonsense is visible rather
     than silently papered over.
+
+    `table` is the scenario's action vocabulary; omitted, the default court table
+    is used. The clamping behaviour is identical either way — a battle scenario
+    gets different defaults, not different guarantees.
     """
-    default = ARCHETYPE_HOURS.get(archetype, ARCHETYPE_HOURS[DEFAULT_ARCHETYPE])
+    if table is not None:
+        default = table.hours_for(archetype)
+    else:
+        default = ARCHETYPE_HOURS.get(archetype,
+                                      ARCHETYPE_HOURS.get(DEFAULT_ARCHETYPE, 1.0))
 
     if proposed is None:
         return default, None      # omission is expected; not worth a warning
