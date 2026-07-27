@@ -46,6 +46,16 @@ class Fact(BaseModel):
     is_true: bool = True
     # Free-form tags the plot machinery keys off ("dragonstone", "poison").
     tags: list[str] = Field(default_factory=list)
+    # Facts that cannot both be so. This is what makes DELIBERATE MISINFORMATION
+    # expressible without ever letting a model author content: a liar who holds
+    # `f_king_poisoned` asserts its contradiction `f_king_old_age` instead, and
+    # the listener acquires a specific false belief rather than a weaker true
+    # one. The pairing is authored data, so "invent a convincing lie" stays
+    # inexpressible — the same absence principle as the belief-index protocol.
+    #
+    # Declared one-way in the seed and symmetrised at load; see
+    # revision.contradictions_of.
+    contradicts: list[str] = Field(default_factory=list)
 
 
 class Belief(BaseModel):

@@ -86,8 +86,15 @@ def discover(world: WorldState, char_id: str, outcome: Outcome,
 
     stance = Stance.SUSPECTS if partial else Stance.KNOWS
     confidence = item.strength * (PARTIAL_DISCOUNT if partial else 1.0)
-    changed = world.grant_belief(char_id, item.fact_id, stance,
-                                 round(confidence, 2), source=None)
+
+    # Goes through revision, not straight into the belief table: finding the vial
+    # has to ARGUE with the comfortable lie you were told, and beat it. It does
+    # beat it — a first-hand source carries full credibility while a rival's word
+    # carries a third of it — but it beats it through the same contest everything
+    # else runs, rather than by special-casing evidence into being unarguable.
+    from .revision import receive
+    changed, notes = receive(world, char_id, item.fact_id,
+                             round(confidence, 2), stance=stance, source_id=None)
     item.found_by.append(char_id)
 
     # A thing you have seen for yourself is no longer a thing Varys told you.
@@ -102,6 +109,6 @@ def discover(world: WorldState, char_id: str, outcome: Outcome,
     what = item.description or f"a {item.kind}"
     if partial:
         return [f"{character.name} finds {what} — enough to be uneasy, "
-                f"not enough to be sure"]
+                f"not enough to be sure"] + notes
     return [f"{character.name} finds {what}: {fact.content}"
-            + ("" if changed else " — nothing they did not already know")]
+            + ("" if changed else " — nothing they did not already know")] + notes

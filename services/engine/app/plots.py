@@ -161,11 +161,50 @@ def propagate(world: WorldState, speaker_id: str, listener_id: str,
     every belief sourced to them be re-examined. Note the listener's belief looks
     identical either way from inside their own head — which is the point.
     """
+    changed, _notes = propagate_verbose(world, speaker_id, listener_id, fact_id,
+                                        truthful)
+    return changed
+
+
+def spoken_fact(world: WorldState, fact_id: str, truthful: bool) -> str | None:
+    """Which fact actually leaves the speaker's mouth.
+
+    Truthfully, the one they hold. Deceitfully, its authored CONTRADICTION —
+    which is what makes a lie a lie rather than a mumbled truth. Ollivar, who
+    knows the king was poisoned, says the king died of age; the listener acquires
+    a specific false belief that later has to be argued back out of them.
+
+    A fact with no authored contradiction cannot be inverted, so the liar falls
+    back to stating it unconvincingly. That fallback is why `contradicts` can be
+    added to a seed incrementally without anything breaking.
+    """
+    from .revision import contradictions_of
+
+    if truthful:
+        return fact_id
+    rivals = contradictions_of(world, fact_id)
+    return rivals[0] if rivals else fact_id
+
+
+def propagate_verbose(world: WorldState, speaker_id: str, listener_id: str,
+                      fact_id: str, truthful: bool = True
+                      ) -> tuple[bool, list[str]]:
+    """`propagate` plus the DM-panel notes explaining any mind that changed."""
+    from .revision import receive
+
     if fact_id not in world.facts or listener_id not in world.characters:
-        return False
-    confidence = TALK_CEILING if truthful else TALK_CEILING * LIE_DISCOUNT
-    return world.grant_belief(listener_id, fact_id, Stance.SUSPECTS,
-                              round(confidence, 2), source=speaker_id)
+        return False, []
+
+    said = spoken_fact(world, fact_id, truthful)
+    inverted = said != fact_id
+
+    # An outright lie is asserted with full conviction — that is the point of
+    # telling it. An unconvincing half-truth is the fallback when the fiction
+    # gives the speaker nothing to invert into.
+    confidence = TALK_CEILING if (truthful or inverted) else TALK_CEILING * LIE_DISCOUNT
+
+    return receive(world, listener_id, said, round(confidence, 2),
+                   stance=Stance.SUSPECTS, source_id=speaker_id)
 
 
 def witnesses(world: WorldState, location: str) -> list[str]:

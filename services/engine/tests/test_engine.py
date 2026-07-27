@@ -295,12 +295,20 @@ def test_clock_rolls_over_days_correctly(world):
 
 def test_a_lie_records_its_source_so_it_can_be_unwound_later(world):
     """This is why beliefs are a join table and not known_by[]: discover the liar
-    and every belief sourced to them becomes re-examinable."""
-    assert propagate(world, "stagg", "orys", "f_stagg_blames_war", truthful=False)
+    and every belief sourced to them becomes re-examinable.
+
+    Stagg, who knows he has been emptying the treasury, is asked about the
+    shortfall and blames the northern campaign. The listener comes away holding
+    a specifically FALSE fact — not a weaker version of the true one.
+    """
+    assert propagate(world, "stagg", "orys", "f_stagg_embezzling", truthful=False)
+
     belief = world.believes("orys", "f_stagg_blames_war")
     assert belief.source_char_id == "stagg"
     assert belief.stance is Stance.SUSPECTS
     assert world.facts["f_stagg_blames_war"].is_true is False
+    # The truth it was told to bury never reached him.
+    assert world.believes("orys", "f_stagg_embezzling") is None
 
 
 def test_hearing_a_rumour_twice_does_not_duplicate_the_edge(world):
@@ -321,7 +329,9 @@ def test_talk_alone_can_never_produce_certainty(world):
     clues rare, which makes the game unwinnable rather than difficult. Certainty
     is bought with evidence; see test_evidence.py.
     """
-    propagate(world, "sela", "orys", "f_king_poisoned", truthful=False)
+    world.beliefs = [b for b in world.beliefs if b.char_id != "orys"]
+
+    propagate(world, "sela", "orys", "f_king_poisoned", truthful=True)
     assert world.believes("orys", "f_king_poisoned").stance is Stance.SUSPECTS
     propagate(world, "queen", "orys", "f_king_poisoned", truthful=True)
 
@@ -331,6 +341,7 @@ def test_talk_alone_can_never_produce_certainty(world):
 
 
 def test_no_amount_of_repetition_breaks_the_ceiling(world):
+    world.beliefs = [b for b in world.beliefs if b.char_id != "orys"]
     for speaker in ("sela", "queen", "ollivar", "wyl", "ferrow", "stagg"):
         propagate(world, speaker, "orys", "f_king_poisoned", truthful=True)
     belief = world.believes("orys", "f_king_poisoned")
@@ -338,8 +349,13 @@ def test_no_amount_of_repetition_breaks_the_ceiling(world):
     assert belief.confidence <= TALK_CEILING
 
 
-def test_a_lie_lands_softer_than_the_truth(world):
-    propagate(world, "stagg", "orys", "f_stagg_blames_war", truthful=False)
-    propagate(world, "stagg", "crowe", "f_stagg_blames_war", truthful=True)
-    assert (world.believes("orys", "f_stagg_blames_war").confidence
-            < world.believes("crowe", "f_stagg_blames_war").confidence)
+def test_an_uninvertible_lie_lands_softer_than_the_truth(world):
+    """`f_king_ill` has no authored contradiction, so a speaker who wants to
+    twist it can only state it unconvincingly. That fallback is what lets
+    `contradicts` be added to a seed one pair at a time."""
+    world.beliefs = [b for b in world.beliefs
+                     if b.char_id not in ("orys", "crowe")]
+    propagate(world, "stagg", "orys", "f_king_ill", truthful=False)
+    propagate(world, "stagg", "crowe", "f_king_ill", truthful=True)
+    assert (world.believes("orys", "f_king_ill").confidence
+            < world.believes("crowe", "f_king_ill").confidence)

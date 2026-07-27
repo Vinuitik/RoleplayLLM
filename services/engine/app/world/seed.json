@@ -1,121 +1,197 @@
 {
   "player_id": "orys",
-  "clock": { "day": 0, "hour": 8.0, "turn": 0 },
-
+  "clock": {
+    "day": 0,
+    "hour": 8.0,
+    "turn": 0
+  },
   "_comment_facts": "Authored FIRST, before beliefs, because deciding what is true forces you to decide who knows it. is_true is ENGINE-ONLY and never leaves the engine — three of these are false, and nobody who believes them can tell.",
-
   "facts": {
     "f_king_ill": {
       "id": "f_king_ill",
       "content": "King Maelor III has been bedridden for eleven days.",
       "is_true": true,
-      "tags": ["court", "public"]
+      "tags": [
+        "court",
+        "public"
+      ]
     },
     "f_king_poisoned": {
       "id": "f_king_poisoned",
       "content": "The king's illness is poison, administered in his evening wine.",
       "is_true": true,
-      "tags": ["dragonstone", "poison", "secret"]
+      "tags": [
+        "dragonstone",
+        "poison",
+        "secret"
+      ]
     },
     "f_king_old_age": {
       "id": "f_king_old_age",
       "content": "The king's illness is nothing but age and a hard winter.",
       "is_true": false,
-      "tags": ["court", "comfortable-lie"]
+      "tags": [
+        "court",
+        "comfortable-lie"
+      ],
+      "contradicts": [
+        "f_king_poisoned"
+      ]
     },
     "f_maester_supplies": {
       "id": "f_maester_supplies",
       "content": "Grand Maester Ollivar sources the king's medicines alone and unattended.",
       "is_true": true,
-      "tags": ["dragonstone", "poison"]
+      "tags": [
+        "dragonstone",
+        "poison"
+      ]
     },
     "f_aerion_claim": {
       "id": "f_aerion_claim",
       "content": "Aerion of Dragonstone holds the stronger claim should the king die childless.",
       "is_true": true,
-      "tags": ["dragonstone", "succession", "public"]
+      "tags": [
+        "dragonstone",
+        "succession",
+        "public"
+      ]
     },
     "f_aerion_conspiracy": {
       "id": "f_aerion_conspiracy",
       "content": "Aerion of Dragonstone is moving to take the throne before the king's body is cold.",
       "is_true": true,
-      "tags": ["dragonstone", "secret"]
+      "tags": [
+        "dragonstone",
+        "secret"
+      ]
     },
     "f_queen_barren": {
       "id": "f_queen_barren",
       "content": "Queen Daenys cannot bear the king an heir.",
       "is_true": true,
-      "tags": ["succession", "secret"]
+      "tags": [
+        "succession",
+        "secret"
+      ]
     },
     "f_queen_lover": {
       "id": "f_queen_lover",
       "content": "Queen Daenys has taken Ser Dorlan Crowe as a lover.",
       "is_true": false,
-      "tags": ["scandal", "rumour"]
+      "tags": [
+        "scandal",
+        "rumour"
+      ]
     },
     "f_treasury_short": {
       "id": "f_treasury_short",
       "content": "The crown's treasury is forty thousand crowns short of its ledgers.",
       "is_true": true,
-      "tags": ["coin", "secret"]
+      "tags": [
+        "coin",
+        "secret"
+      ]
     },
     "f_stagg_embezzling": {
       "id": "f_stagg_embezzling",
       "content": "Lord Byren Stagg has been quietly emptying the treasury into Braavosi accounts.",
       "is_true": true,
-      "tags": ["coin", "secret"]
+      "tags": [
+        "coin",
+        "secret"
+      ]
     },
     "f_stagg_blames_war": {
       "id": "f_stagg_blames_war",
       "content": "The treasury's shortfall is the cost of the northern campaign.",
       "is_true": false,
-      "tags": ["coin", "comfortable-lie"]
+      "tags": [
+        "coin",
+        "comfortable-lie"
+      ],
+      "contradicts": [
+        "f_stagg_embezzling"
+      ]
     },
     "f_watch_unpaid": {
       "id": "f_watch_unpaid",
       "content": "The City Watch has gone two months without pay.",
       "is_true": true,
-      "tags": ["coin", "unrest", "public"]
+      "tags": [
+        "coin",
+        "unrest",
+        "public"
+      ]
     },
     "f_ferrow_letters": {
       "id": "f_ferrow_letters",
       "content": "Mycella Ferrow keeps sealed correspondence with Dragonstone.",
       "is_true": true,
-      "tags": ["dragonstone", "secret"]
+      "tags": [
+        "dragonstone",
+        "secret"
+      ]
     },
     "f_sela_saw": {
       "id": "f_sela_saw",
       "content": "A servant saw Grand Maester Ollivar leaving the king's chambers past midnight.",
       "is_true": true,
-      "tags": ["poison", "witness"]
+      "tags": [
+        "poison",
+        "witness"
+      ]
     },
     "f_orys_appointed": {
       "id": "f_orys_appointed",
       "content": "Orys Ashwood was named Hand of the King nine days ago.",
       "is_true": true,
-      "tags": ["court", "public"]
+      "tags": [
+        "court",
+        "public"
+      ]
     },
     "f_septon_debt": {
       "id": "f_septon_debt",
       "content": "Septon Wyl owes Lord Stagg a debt he cannot repay.",
       "is_true": true,
-      "tags": ["coin", "leverage", "secret"]
+      "tags": [
+        "coin",
+        "leverage",
+        "secret"
+      ]
     }
   },
-
   "_comment_characters": "Stats are 1-5. `hides` lists fact ids a character actively conceals — the intention prompt uses the CONTENT so they steer away in character, rather than receiving a 'do not mention' rule they can narrate around.",
-
   "characters": {
     "orys": {
       "id": "orys",
       "name": "Orys Ashwood",
       "title": "Hand of the King",
-      "stats": { "might": 2, "guile": 3, "presence": 4, "wits": 4, "resolve": 4 },
-      "wants": ["keep the realm from splitting", "learn what ails the king"],
-      "fears": ["being the last honest man at a table of liars"],
+      "stats": {
+        "might": 2,
+        "guile": 3,
+        "presence": 4,
+        "wits": 4,
+        "resolve": 4
+      },
+      "wants": [
+        "keep the realm from splitting",
+        "learn what ails the king"
+      ],
+      "fears": [
+        "being the last honest man at a table of liars"
+      ],
       "hides": [],
       "candor": 0.6,
-      "relationships": { "king": 3, "queen": 1, "ferrow": 0, "stagg": 0, "ollivar": 1, "crowe": 1 },
+      "relationships": {
+        "king": 3,
+        "queen": 1,
+        "ferrow": 0,
+        "stagg": 0,
+        "ollivar": 1,
+        "crowe": 1
+      },
       "location": "small_council",
       "alive": true
     },
@@ -123,12 +199,26 @@
       "id": "king",
       "name": "Maelor III",
       "title": "King",
-      "stats": { "might": 1, "guile": 2, "presence": 3, "wits": 2, "resolve": 2 },
-      "wants": ["to see one more spring"],
-      "fears": ["dying without an heir"],
+      "stats": {
+        "might": 1,
+        "guile": 2,
+        "presence": 3,
+        "wits": 2,
+        "resolve": 2
+      },
+      "wants": [
+        "to see one more spring"
+      ],
+      "fears": [
+        "dying without an heir"
+      ],
       "hides": [],
       "candor": 0.5,
-      "relationships": { "orys": 3, "queen": 2, "aerion": -1 },
+      "relationships": {
+        "orys": 3,
+        "queen": 2,
+        "aerion": -1
+      },
       "location": "royal_apartments",
       "alive": true
     },
@@ -136,12 +226,31 @@
       "id": "queen",
       "name": "Daenys",
       "title": "Queen",
-      "stats": { "might": 1, "guile": 4, "presence": 4, "wits": 3, "resolve": 3 },
-      "wants": ["survive the king", "keep her barrenness buried"],
-      "fears": ["being set aside", "Aerion on the throne"],
-      "hides": ["f_queen_barren"],
+      "stats": {
+        "might": 1,
+        "guile": 4,
+        "presence": 4,
+        "wits": 3,
+        "resolve": 3
+      },
+      "wants": [
+        "survive the king",
+        "keep her barrenness buried"
+      ],
+      "fears": [
+        "being set aside",
+        "Aerion on the throne"
+      ],
+      "hides": [
+        "f_queen_barren"
+      ],
       "candor": 0.3,
-      "relationships": { "king": 2, "orys": 1, "aerion": -3, "ferrow": -1 },
+      "relationships": {
+        "king": 2,
+        "orys": 1,
+        "aerion": -3,
+        "ferrow": -1
+      },
       "location": "royal_apartments",
       "alive": true
     },
@@ -149,12 +258,32 @@
       "id": "aerion",
       "name": "Aerion",
       "title": "Heir of Dragonstone",
-      "stats": { "might": 3, "guile": 4, "presence": 4, "wits": 4, "resolve": 4 },
-      "wants": ["the Iron Throne", "to be seen as the lawful choice"],
-      "fears": ["being named a kingslayer"],
-      "hides": ["f_aerion_conspiracy", "f_king_poisoned"],
+      "stats": {
+        "might": 3,
+        "guile": 4,
+        "presence": 4,
+        "wits": 4,
+        "resolve": 4
+      },
+      "wants": [
+        "the Iron Throne",
+        "to be seen as the lawful choice"
+      ],
+      "fears": [
+        "being named a kingslayer"
+      ],
+      "hides": [
+        "f_aerion_conspiracy",
+        "f_king_poisoned"
+      ],
       "candor": 0.25,
-      "relationships": { "king": -2, "queen": -3, "orys": -1, "ferrow": 2, "ollivar": 2 },
+      "relationships": {
+        "king": -2,
+        "queen": -3,
+        "orys": -1,
+        "ferrow": 2,
+        "ollivar": 2
+      },
       "location": "dragonstone",
       "alive": true
     },
@@ -162,12 +291,30 @@
       "id": "ferrow",
       "name": "Mycella Ferrow",
       "title": "Mistress of Whisperers",
-      "stats": { "might": 1, "guile": 5, "presence": 3, "wits": 5, "resolve": 3 },
-      "wants": ["to be on the winning side before it wins"],
-      "fears": ["being the last to know"],
-      "hides": ["f_ferrow_letters", "f_aerion_conspiracy"],
+      "stats": {
+        "might": 1,
+        "guile": 5,
+        "presence": 3,
+        "wits": 5,
+        "resolve": 3
+      },
+      "wants": [
+        "to be on the winning side before it wins"
+      ],
+      "fears": [
+        "being the last to know"
+      ],
+      "hides": [
+        "f_ferrow_letters",
+        "f_aerion_conspiracy"
+      ],
       "candor": 0.2,
-      "relationships": { "aerion": 2, "orys": 0, "queen": -1, "stagg": -1 },
+      "relationships": {
+        "aerion": 2,
+        "orys": 0,
+        "queen": -1,
+        "stagg": -1
+      },
       "location": "small_council",
       "alive": true
     },
@@ -175,12 +322,30 @@
       "id": "stagg",
       "name": "Byren Stagg",
       "title": "Master of Coin",
-      "stats": { "might": 2, "guile": 4, "presence": 3, "wits": 4, "resolve": 2 },
-      "wants": ["the ledgers never audited", "passage to Braavos if it comes to that"],
-      "fears": ["an honest Hand"],
-      "hides": ["f_stagg_embezzling", "f_treasury_short"],
+      "stats": {
+        "might": 2,
+        "guile": 4,
+        "presence": 3,
+        "wits": 4,
+        "resolve": 2
+      },
+      "wants": [
+        "the ledgers never audited",
+        "passage to Braavos if it comes to that"
+      ],
+      "fears": [
+        "an honest Hand"
+      ],
+      "hides": [
+        "f_stagg_embezzling",
+        "f_treasury_short"
+      ],
       "candor": 0.3,
-      "relationships": { "orys": -1, "wyl": 1, "crowe": -1 },
+      "relationships": {
+        "orys": -1,
+        "wyl": 1,
+        "crowe": -1
+      },
       "location": "small_council",
       "alive": true
     },
@@ -188,12 +353,30 @@
       "id": "ollivar",
       "name": "Ollivar",
       "title": "Grand Maester",
-      "stats": { "might": 1, "guile": 3, "presence": 2, "wits": 5, "resolve": 2 },
-      "wants": ["Aerion's favour when the throne turns over"],
-      "fears": ["the servant who saw him"],
-      "hides": ["f_king_poisoned", "f_sela_saw"],
+      "stats": {
+        "might": 1,
+        "guile": 3,
+        "presence": 2,
+        "wits": 5,
+        "resolve": 2
+      },
+      "wants": [
+        "Aerion's favour when the throne turns over"
+      ],
+      "fears": [
+        "the servant who saw him"
+      ],
+      "hides": [
+        "f_king_poisoned",
+        "f_sela_saw"
+      ],
       "candor": 0.3,
-      "relationships": { "aerion": 2, "king": 0, "orys": 0, "sela": -2 },
+      "relationships": {
+        "aerion": 2,
+        "king": 0,
+        "orys": 0,
+        "sela": -2
+      },
       "location": "royal_apartments",
       "alive": true
     },
@@ -201,12 +384,26 @@
       "id": "crowe",
       "name": "Dorlan Crowe",
       "title": "Commander of the City Watch",
-      "stats": { "might": 4, "guile": 2, "presence": 3, "wits": 2, "resolve": 4 },
-      "wants": ["his men paid before they start taking it themselves"],
-      "fears": ["a riot he cannot hold"],
+      "stats": {
+        "might": 4,
+        "guile": 2,
+        "presence": 3,
+        "wits": 2,
+        "resolve": 4
+      },
+      "wants": [
+        "his men paid before they start taking it themselves"
+      ],
+      "fears": [
+        "a riot he cannot hold"
+      ],
       "hides": [],
       "candor": 0.7,
-      "relationships": { "orys": 1, "stagg": -2, "queen": 1 },
+      "relationships": {
+        "orys": 1,
+        "stagg": -2,
+        "queen": 1
+      },
       "location": "watch_barracks",
       "alive": true
     },
@@ -214,12 +411,27 @@
       "id": "wyl",
       "name": "Wyl",
       "title": "Septon",
-      "stats": { "might": 1, "guile": 3, "presence": 4, "wits": 3, "resolve": 1 },
-      "wants": ["his debt forgiven"],
-      "fears": ["Stagg calling it in publicly"],
-      "hides": ["f_septon_debt"],
+      "stats": {
+        "might": 1,
+        "guile": 3,
+        "presence": 4,
+        "wits": 3,
+        "resolve": 1
+      },
+      "wants": [
+        "his debt forgiven"
+      ],
+      "fears": [
+        "Stagg calling it in publicly"
+      ],
+      "hides": [
+        "f_septon_debt"
+      ],
       "candor": 0.6,
-      "relationships": { "stagg": -2, "orys": 1 },
+      "relationships": {
+        "stagg": -2,
+        "orys": 1
+      },
       "location": "sept",
       "alive": true
     },
@@ -227,103 +439,349 @@
       "id": "sela",
       "name": "Sela",
       "title": "handmaid to the Queen",
-      "stats": { "might": 1, "guile": 2, "presence": 2, "wits": 3, "resolve": 2 },
-      "wants": ["to tell someone who will believe her"],
-      "fears": ["the Grand Maester noticing she noticed"],
+      "stats": {
+        "might": 1,
+        "guile": 2,
+        "presence": 2,
+        "wits": 3,
+        "resolve": 2
+      },
+      "wants": [
+        "to tell someone who will believe her"
+      ],
+      "fears": [
+        "the Grand Maester noticing she noticed"
+      ],
       "hides": [],
       "candor": 0.45,
-      "relationships": { "queen": 2, "ollivar": -2, "orys": 1 },
+      "relationships": {
+        "queen": 2,
+        "ollivar": -2,
+        "orys": 1
+      },
       "location": "royal_apartments",
       "alive": true
     }
   },
-
   "_comment_beliefs": "The join table. Note orys holds f_king_old_age (FALSE) with full confidence — he is certain, so the narrator states it flatly and never hints there is anything to doubt. That is the design working.",
-
   "beliefs": [
-    { "char_id": "orys", "fact_id": "f_orys_appointed", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "orys", "fact_id": "f_king_ill", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "orys", "fact_id": "f_king_old_age", "stance": "knows", "confidence": 1.0, "source_char_id": "ollivar" },
-    { "char_id": "orys", "fact_id": "f_aerion_claim", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "orys", "fact_id": "f_watch_unpaid", "stance": "suspects", "confidence": 0.5 },
-
-    { "char_id": "king", "fact_id": "f_king_ill", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "king", "fact_id": "f_king_old_age", "stance": "knows", "confidence": 0.8, "source_char_id": "ollivar" },
-    { "char_id": "king", "fact_id": "f_aerion_claim", "stance": "knows", "confidence": 1.0 },
-
-    { "char_id": "queen", "fact_id": "f_queen_barren", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "queen", "fact_id": "f_king_ill", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "queen", "fact_id": "f_aerion_claim", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "queen", "fact_id": "f_king_poisoned", "stance": "suspects", "confidence": 0.4 },
-
-    { "char_id": "aerion", "fact_id": "f_aerion_conspiracy", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "aerion", "fact_id": "f_king_poisoned", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "aerion", "fact_id": "f_aerion_claim", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "aerion", "fact_id": "f_queen_barren", "stance": "knows", "confidence": 0.9, "source_char_id": "ferrow" },
-    { "char_id": "aerion", "fact_id": "f_ferrow_letters", "stance": "knows", "confidence": 1.0 },
-
-    { "char_id": "ferrow", "fact_id": "f_ferrow_letters", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "ferrow", "fact_id": "f_aerion_conspiracy", "stance": "knows", "confidence": 0.9 },
-    { "char_id": "ferrow", "fact_id": "f_queen_barren", "stance": "knows", "confidence": 0.9 },
-    { "char_id": "ferrow", "fact_id": "f_queen_lover", "stance": "suspects", "confidence": 0.5 },
-    { "char_id": "ferrow", "fact_id": "f_stagg_embezzling", "stance": "suspects", "confidence": 0.6 },
-    { "char_id": "ferrow", "fact_id": "f_king_ill", "stance": "knows", "confidence": 1.0 },
-
-    { "char_id": "stagg", "fact_id": "f_stagg_embezzling", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "stagg", "fact_id": "f_treasury_short", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "stagg", "fact_id": "f_stagg_blames_war", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "stagg", "fact_id": "f_septon_debt", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "stagg", "fact_id": "f_watch_unpaid", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "stagg", "fact_id": "f_king_ill", "stance": "knows", "confidence": 1.0 },
-
-    { "char_id": "ollivar", "fact_id": "f_king_poisoned", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "ollivar", "fact_id": "f_maester_supplies", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "ollivar", "fact_id": "f_aerion_conspiracy", "stance": "knows", "confidence": 0.8 },
-    { "char_id": "ollivar", "fact_id": "f_king_ill", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "ollivar", "fact_id": "f_sela_saw", "stance": "suspects", "confidence": 0.5 },
-
-    { "char_id": "crowe", "fact_id": "f_watch_unpaid", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "crowe", "fact_id": "f_king_ill", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "crowe", "fact_id": "f_stagg_blames_war", "stance": "suspects", "confidence": 0.4, "source_char_id": "stagg" },
-
-    { "char_id": "wyl", "fact_id": "f_septon_debt", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "wyl", "fact_id": "f_king_ill", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "wyl", "fact_id": "f_queen_lover", "stance": "suspects", "confidence": 0.3 },
-
-    { "char_id": "sela", "fact_id": "f_sela_saw", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "sela", "fact_id": "f_king_ill", "stance": "knows", "confidence": 1.0 },
-    { "char_id": "sela", "fact_id": "f_queen_barren", "stance": "suspects", "confidence": 0.6 }
+    {
+      "char_id": "orys",
+      "fact_id": "f_orys_appointed",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "orys",
+      "fact_id": "f_king_ill",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "orys",
+      "fact_id": "f_king_old_age",
+      "stance": "knows",
+      "confidence": 1.0,
+      "source_char_id": "ollivar"
+    },
+    {
+      "char_id": "orys",
+      "fact_id": "f_aerion_claim",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "orys",
+      "fact_id": "f_watch_unpaid",
+      "stance": "suspects",
+      "confidence": 0.5
+    },
+    {
+      "char_id": "king",
+      "fact_id": "f_king_ill",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "king",
+      "fact_id": "f_king_old_age",
+      "stance": "knows",
+      "confidence": 0.8,
+      "source_char_id": "ollivar"
+    },
+    {
+      "char_id": "king",
+      "fact_id": "f_aerion_claim",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "queen",
+      "fact_id": "f_queen_barren",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "queen",
+      "fact_id": "f_king_ill",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "queen",
+      "fact_id": "f_aerion_claim",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "queen",
+      "fact_id": "f_king_poisoned",
+      "stance": "suspects",
+      "confidence": 0.4
+    },
+    {
+      "char_id": "aerion",
+      "fact_id": "f_aerion_conspiracy",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "aerion",
+      "fact_id": "f_king_poisoned",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "aerion",
+      "fact_id": "f_aerion_claim",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "aerion",
+      "fact_id": "f_queen_barren",
+      "stance": "knows",
+      "confidence": 0.9,
+      "source_char_id": "ferrow"
+    },
+    {
+      "char_id": "aerion",
+      "fact_id": "f_ferrow_letters",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "ferrow",
+      "fact_id": "f_ferrow_letters",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "ferrow",
+      "fact_id": "f_aerion_conspiracy",
+      "stance": "knows",
+      "confidence": 0.9
+    },
+    {
+      "char_id": "ferrow",
+      "fact_id": "f_queen_barren",
+      "stance": "knows",
+      "confidence": 0.9
+    },
+    {
+      "char_id": "ferrow",
+      "fact_id": "f_queen_lover",
+      "stance": "suspects",
+      "confidence": 0.5
+    },
+    {
+      "char_id": "ferrow",
+      "fact_id": "f_stagg_embezzling",
+      "stance": "suspects",
+      "confidence": 0.6
+    },
+    {
+      "char_id": "ferrow",
+      "fact_id": "f_king_ill",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "stagg",
+      "fact_id": "f_stagg_embezzling",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "stagg",
+      "fact_id": "f_treasury_short",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "stagg",
+      "fact_id": "f_stagg_blames_war",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "stagg",
+      "fact_id": "f_septon_debt",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "stagg",
+      "fact_id": "f_watch_unpaid",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "stagg",
+      "fact_id": "f_king_ill",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "ollivar",
+      "fact_id": "f_king_poisoned",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "ollivar",
+      "fact_id": "f_maester_supplies",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "ollivar",
+      "fact_id": "f_aerion_conspiracy",
+      "stance": "knows",
+      "confidence": 0.8
+    },
+    {
+      "char_id": "ollivar",
+      "fact_id": "f_king_ill",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "ollivar",
+      "fact_id": "f_sela_saw",
+      "stance": "suspects",
+      "confidence": 0.5
+    },
+    {
+      "char_id": "crowe",
+      "fact_id": "f_watch_unpaid",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "crowe",
+      "fact_id": "f_king_ill",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "crowe",
+      "fact_id": "f_stagg_blames_war",
+      "stance": "suspects",
+      "confidence": 0.4,
+      "source_char_id": "stagg"
+    },
+    {
+      "char_id": "wyl",
+      "fact_id": "f_septon_debt",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "wyl",
+      "fact_id": "f_king_ill",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "wyl",
+      "fact_id": "f_queen_lover",
+      "stance": "suspects",
+      "confidence": 0.3
+    },
+    {
+      "char_id": "sela",
+      "fact_id": "f_sela_saw",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "sela",
+      "fact_id": "f_king_ill",
+      "stance": "knows",
+      "confidence": 1.0
+    },
+    {
+      "char_id": "sela",
+      "fact_id": "f_queen_barren",
+      "stance": "suspects",
+      "confidence": 0.6
+    }
   ],
-
   "_comment_plots": "stage_facts[i] becomes KNOWN to members when the plot reaches stage i, and is the fact the exposure roll may leak as a SUSPICION to someone standing nearby.",
-
   "plots": {
     "dragonstone": {
       "id": "dragonstone",
       "name": "the Dragonstone conspiracy",
       "stage": 0,
-      "stages": ["patient", "poison working", "fleet assembling", "landing", "crowned"],
-      "members": ["aerion", "ferrow", "ollivar"],
-      "advance_chance": 0.30,
+      "stages": [
+        "patient",
+        "poison working",
+        "fleet assembling",
+        "landing",
+        "crowned"
+      ],
+      "members": [
+        "aerion",
+        "ferrow",
+        "ollivar"
+      ],
+      "advance_chance": 0.3,
       "exposure_chance": 0.35,
-      "stage_facts": ["f_aerion_conspiracy", "f_king_poisoned", "f_ferrow_letters", "f_maester_supplies", "f_aerion_claim"],
+      "stage_facts": [
+        "f_aerion_conspiracy",
+        "f_king_poisoned",
+        "f_ferrow_letters",
+        "f_maester_supplies",
+        "f_aerion_claim"
+      ],
       "active": true
     },
     "empty_vault": {
       "id": "empty_vault",
       "name": "Stagg's empty vault",
       "stage": 0,
-      "stages": ["skimming", "ledgers forged", "watch unpaid", "passage booked"],
-      "members": ["stagg"],
+      "stages": [
+        "skimming",
+        "ledgers forged",
+        "watch unpaid",
+        "passage booked"
+      ],
+      "members": [
+        "stagg"
+      ],
       "advance_chance": 0.25,
-      "exposure_chance": 0.40,
-      "stage_facts": ["f_stagg_embezzling", "f_stagg_blames_war", "f_watch_unpaid", "f_treasury_short"],
+      "exposure_chance": 0.4,
+      "stage_facts": [
+        "f_stagg_embezzling",
+        "f_stagg_blames_war",
+        "f_watch_unpaid",
+        "f_treasury_short"
+      ],
       "active": true
     }
   },
-
   "_comment_meters": "rate_formula is per HOUR and evaluated by the safe AST evaluator. Meters may reference each other by id — the treasury bleeds faster while unrest is high, and unrest climbs while the treasury is empty, so the two feed each other into a spiral if nothing intervenes.",
-
   "meters": {
     "treasury": {
       "id": "treasury",
@@ -376,7 +834,6 @@
       "visible_to_player": true
     }
   },
-
   "modifiers": [],
   "chronicle": []
 }
