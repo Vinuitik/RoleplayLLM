@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#12100e"/>
+  <!-- The Hand's chain of office -->
+  <g fill="none" stroke="#c8a24a" stroke-width="18" stroke-linecap="round">
+    <path d="M256 96 L256 300"/>
+    <path d="M176 150 Q256 210 336 150"/>
+    <path d="M186 230 Q256 280 326 230"/>
+  </g>
+  <circle cx="256" cy="356" r="52" fill="none" stroke="#c8a24a" stroke-width="18"/>
+  <circle cx="256" cy="356" r="16" fill="#8c3b3b"/>
+</svg>

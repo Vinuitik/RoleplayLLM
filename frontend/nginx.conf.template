@@ -1,0 +1,64 @@
+# nginx serves the built SPA and proxies /api to the engine, so the browser only
+# ever talks to ONE origin. That is what makes the phone, the desktop and the
+# Cloudflare tunnel all work with identical frontend code — and why there is no
+# CORS configuration anywhere in this project.
+
+server {
+    listen 8081;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Cloudflare terminates TLS at its edge and the tunnel is the only ingress,
+    # so the real client IP arrives in these headers rather than $remote_addr.
+    real_ip_header CF-Connecting-IP;
+
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 512;
+
+    # ── API ─────────────────────────────────────────────────────────────
+    location /api/ {
+        proxy_pass http://engine:8090/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # A turn fans out across several providers, each of which may sit on a
+        # rate-limit bench before responding. The default 60s read timeout would
+        # cut a legitimate turn off mid-flight.
+        proxy_connect_timeout 10s;
+        proxy_send_timeout    300s;
+        proxy_read_timeout    300s;
+
+        # Narration arrives as one JSON body; buffering it is fine and keeps
+        # slow-client handling in nginx rather than uvicorn.
+        proxy_buffering on;
+    }
+
+    # ── PWA ─────────────────────────────────────────────────────────────
+    # The service worker must never be cached, or a stale one pins the app to an
+    # old shell for as long as its own cache lives.
+    location = /sw.js {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires off;
+    }
+
+    location = /manifest.webmanifest {
+        add_header Cache-Control "no-cache";
+        types { } default_type application/manifest+json;
+    }
+
+    # Vite content-hashes these, so they can be cached hard and forever.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # ── SPA fallback ────────────────────────────────────────────────────
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
