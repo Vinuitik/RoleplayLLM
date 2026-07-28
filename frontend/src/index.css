@@ -66,6 +66,28 @@ body {
 .intro p { color: var(--ink-dim); }
 .intro__note { font-size: 0.9rem; color: var(--ink-faint); font-style: italic; }
 
+/* Session Zero. The two ways in sit side by side rather than one hiding behind
+   the other, because generating a world is a materially different (and slower)
+   thing than starting the authored one. */
+.intro__tabs { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1.5rem; }
+.intro .field { width: 100%; margin: 1rem 0 0.5rem; text-align: left; }
+.intro__examples { list-style: none; padding: 0; margin: 0 0 1.25rem; text-align: left; }
+.intro__examples li { margin: 0.4rem 0; }
+.link {
+  background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
+  color: var(--ink-faint); font: inherit; font-size: 0.85rem; line-height: 1.4;
+  border-bottom: 1px dotted transparent;
+}
+.link:hover:not(:disabled) { color: var(--gold); border-bottom-color: var(--gold); }
+.link:disabled { cursor: default; opacity: 0.5; }
+
+/* Generation repairs. Collapsed by default — visible, but not alarming: most
+   worlds generate with a couple of dropped references and play fine. */
+.intro__report { margin-top: 1.5rem; text-align: left; font-size: 0.85rem; }
+.intro__report summary { cursor: pointer; color: var(--ink-faint); }
+.intro__report ul { margin: 0.5rem 0 0; padding-left: 1.2rem; color: var(--ink-dim); }
+.intro__report li { margin: 0.25rem 0; }
+
 /* ── status bar ──────────────────────────────────────────────────────── */
 
 .statusbar {

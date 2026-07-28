@@ -363,3 +363,60 @@ people get uncertain long before they change their minds.
 
 The engine never reads `is_true` to do any of this. A false belief defends
 itself exactly as well as a true one.
+
+
+---
+
+## Just-in-time truth
+
+Worldgen cannot enumerate everything. When the player asks about a gap, the
+engine establishes the answer as a **real fact** before anyone speaks — with a
+real `is_true`, held by whoever would plausibly know it, plus the plausible lie
+about it. See `lore.py`.
+
+The alternative is the failure that makes LLM roleplay feel like sand: a model
+invents a number inside its prose, that number exists only in a transcript,
+nobody else in the world knows it, and the next character asked contradicts it.
+
+`world.lore_index` makes it **idempotent by topic** — asking three characters
+the same question interrogates one truth instead of minting three.
+
+### Facts that events can move, and the lock on the rest
+
+Immutable is the **default**. "The king was poisoned" is true forever or was
+never true. A few facts are standing quantities — "the Watch numbers 2,100 men"
+— which are true today and which a battle should change.
+
+`mutable` is decided **at creation and never afterwards**, and no model-facing
+path can set it. That one-way door is the whole safety property: an LLM able to
+amend arbitrary facts would eventually amend the murder it committed, and it
+would look like a legitimate state update. `locked` is a second gate for pinning
+load-bearing numbers even when they are nominally quantities.
+
+Amendment marks existing knowledge **stale rather than updated**. Silently
+updating every holder would hand the world free omniscience every time a number
+moved — a commander two hundred miles away should not learn his own casualties
+by magic. Confidence halves, stance drops to `SUSPECTS`, and learning the new
+number is a normal act of communication or discovery.
+
+---
+
+## Telemetry — making degradation visible
+
+An LLM-driven simulation degrades quietly. `telemetry.py` writes one row per
+model call to SQLite, grouped by `game_id` and ordered by `(turn, seq)` so a
+session reads back chronologically.
+
+The column that matters is `violations`. The engine **already** forgives an
+out-of-range belief index, an unparseable `hours_elapsed`, an unknown action —
+that forgiveness keeps a turn alive, and it is also exactly what makes drift
+invisible. A model hallucinating belief indices looks identical to a quiet NPC.
+Every silent repair is now counted and named.
+
+- `GET /games/{id}/telemetry` — the chronological log
+- `GET /telemetry/health` — breakdowns by provider, call kind, and prompt-length
+  band. Breakdowns rather than one score, because a quality drop is almost
+  always localised and an average is what hides it.
+
+The suite has an autouse guard that fails loudly on any attempt to reach a
+model, so a test can never pass or fail for network reasons.
