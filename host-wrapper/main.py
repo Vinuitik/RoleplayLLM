@@ -31,9 +31,43 @@ app = Flask(__name__)
 router = llm_router.Router()
 
 
+def _git_sha() -> str:
+    """The commit this process was STARTED from — captured once, at import.
+
+    Read at import rather than per-request on purpose. A per-request lookup
+    would report whatever HEAD happens to be right now, which is precisely the
+    lie this endpoint exists to expose: the working tree moving forward while a
+    long-lived process keeps serving the code it was launched with.
+    """
+    import subprocess
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=here, capture_output=True,
+            text=True, timeout=5).stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+STARTED_SHA = _git_sha()
+
+
 @app.route("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.route("/version")
+def version():
+    """What commit is actually running here.
+
+    The wrapper lives on the host and outlives every `docker compose up`, so it
+    is the single most likely component to be quietly stale — you rebuild the
+    stack, everything reports healthy, and this process is still running the
+    router from three commits ago. tools/redeploy.sh asserts this matches the
+    working tree, which turns "it restarted" into "it is running this commit".
+    """
+    return {"sha": STARTED_SHA}
 
 
 @app.route("/providers")

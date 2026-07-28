@@ -13,7 +13,12 @@
 
 services:
   engine:
-    build: ./services/engine
+    build:
+      context: ./services/engine
+      args:
+        # Supplied by tools/redeploy.sh so /version can prove which commit is
+        # actually serving. Defaults to "unknown" for a plain `compose up`.
+        GIT_SHA: ${GIT_SHA:-unknown}
     restart: unless-stopped
     ports:
       # Loopback only. The browser reaches the engine through nginx, never

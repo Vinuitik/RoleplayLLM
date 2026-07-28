@@ -135,6 +135,19 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/version")
+def version() -> dict:
+    """What commit this container was BUILT from.
+
+    Baked in at build time via a GIT_SHA build arg — the container has no git
+    and no repo, so it cannot look this up itself, and that is the point: the
+    value is frozen to the image rather than to whatever the working tree says
+    now. tools/redeploy.sh compares it against HEAD, which is what makes
+    "healthy" mean "running your code" instead of "running something".
+    """
+    return {"sha": os.environ.get("GIT_SHA", "unknown")}
+
+
 @app.get("/providers")
 def providers() -> dict:
     """Proxied from the wrapper so the DM panel can explain a stalled turn
