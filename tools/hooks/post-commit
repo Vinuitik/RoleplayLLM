@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+# Redeploy after every commit.
+#
+# Versioned in tools/hooks/ rather than left in .git/hooks/ so it survives a
+# fresh clone and shows up in review. Install with: tools/install-hooks.sh
+#
+# Runs in the BACKGROUND on purpose. A post-commit hook that blocks on a docker
+# build turns every `git commit` into a 30-second pause, and the reliable outcome
+# of that is you stop committing often. Watch it with:  tail -f .deploy.log
+#
+# Skip a deploy for a docs-only commit:  SKIP_DEPLOY=1 git commit -m "..."
+
+[ -n "$SKIP_DEPLOY" ] && exit 0
+
+ROOT=$(git rev-parse --show-toplevel)
+
+# Docs and tooling do not change what the app serves.
+if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -qv -e '^tools/' -e '\.md$'; then
+  ( "$ROOT/tools/redeploy.sh" --quiet >/dev/null 2>&1 & ) >/dev/null 2>&1
+  echo "[post-commit] redeploying in background — tail -f .deploy.log"
+else
+  echo "[post-commit] docs/tooling only, skipping redeploy"
+fi
+exit 0

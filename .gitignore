@@ -12,3 +12,6 @@ data/
 *.db
 _out.log
 _err.log
+
+# redeploy script output
+.deploy.log
