@@ -19,9 +19,12 @@ from pydantic import BaseModel
 from . import llm, store, telemetry, worldgen
 from .models import WorldState
 from .projection import project
-from .turn import play_turn
+from .turn import _split_suggestions, play_turn
 
-SEED_FILE = Path(__file__).resolve().parent / "world" / "seed.json"
+SEED_DIR = Path(__file__).resolve().parent / "world"
+SEED_FILE = SEED_DIR / "seed.json"
+# actions.json is a vocabulary table, not a scenario.
+NOT_A_SCENARIO = {"actions.json"}
 
 app = FastAPI(title="RoleplayLLM engine", version="0.1.0")
 
@@ -41,11 +44,58 @@ def _startup() -> None:
     telemetry.init_db()
 
 
-def load_seed_world() -> WorldState:
-    raw = json.loads(SEED_FILE.read_text(encoding="utf-8"))
+def load_seed_world(name: str = "seed") -> WorldState:
+    safe = "".join(c for c in name if c.isalnum() or c in "-_") or "seed"
+    path = SEED_DIR / f"{safe}.json"
+    if not path.exists():
+        raise HTTPException(404, f"no such scenario: {safe}")
+    raw = json.loads(path.read_text(encoding="utf-8"))
     # _comment_* keys are authoring notes for whoever edits the world by hand.
     return WorldState.model_validate(
         {k: v for k, v in raw.items() if not k.startswith("_comment")})
+
+
+@app.get("/scenarios")
+def scenarios() -> list[dict]:
+    """Every playable scenario on disk.
+
+    The UI used to hardcode one scenario's title, blurb and opening suggestions,
+    which made "swap the world" a frontend edit. A scenario is data; the list of
+    them should be too, and a world saved by worldgen shows up here for free.
+    """
+    out = []
+    for path in sorted(SEED_DIR.glob("*.json")):
+        if path.name in NOT_A_SCENARIO:
+            continue
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        characters = raw.get("characters") or {}
+        default_id = raw.get("player_id")
+
+        # EVERY living character is playable. The seed's `player_id` is a
+        # default, not a protagonist — the engine has no concept of one, since
+        # every character already has a projection, wants, fears and secrets.
+        playable = [
+            {"id": cid, "name": c.get("name", cid), "role": c.get("title", ""),
+             "location": c.get("location", ""),
+             "wants": (c.get("wants") or [])[:2],
+             "default": cid == default_id}
+            for cid, c in characters.items() if c.get("alive", True)
+        ]
+        playable.sort(key=lambda p: (not p["default"], p["name"]))
+
+        default = characters.get(default_id, {})
+        out.append({
+            "id": path.stem,
+            "title": raw.get("title") or path.stem.replace("_", " ").title(),
+            "blurb": raw.get("blurb") or raw.get("canon", "")[:280],
+            "play_as": default.get("name", ""),
+            "role": default.get("title", ""),
+            "playable": playable,
+        })
+    return out
 
 
 # ── requests ────────────────────────────────────────────────────────────────
@@ -54,6 +104,17 @@ class NewGame(BaseModel):
     title: str = ""
     # Blank = random. Fixed = the same dice every playthrough, for debugging.
     seed: str = ""
+    # Which scenario file to load. Defaults to the authored court.
+    scenario: str = "seed"
+    # Which character to play. Blank = the scenario's default.
+    #
+    # The seed names a `player_id`, but that is a DEFAULT, not a constraint.
+    # Every character already has wants, fears, secrets and a projection — the
+    # engine has no concept of a protagonist, so which one the player inhabits
+    # is a choice at game start rather than a property of the world. Playing a
+    # conspirator is a different game in the same world: you start holding the
+    # secret instead of hunting it.
+    play_as: str = ""
 
 
 class Action(BaseModel):
@@ -85,31 +146,49 @@ def providers() -> dict:
 
 @app.post("/games")
 def new_game(request: NewGame) -> dict:
-    world = load_seed_world()
+    world = load_seed_world(request.scenario)
+    default_player = world.player_id
+
+    if request.play_as:
+        if request.play_as not in world.characters:
+            raise HTTPException(404, f"no such character: {request.play_as}")
+        if not world.characters[request.play_as].alive:
+            raise HTTPException(400, f"{request.play_as} is dead")
+        world.player_id = request.play_as
+
     seed = request.seed or uuid.uuid4().hex[:8]
-    game_id = store.create_game(world, seed=seed, title=request.title)
     view = project(world, world.player_id)
+
+    # The authored opening is written for the DEFAULT character — it says "you
+    # are Orys Ashwood, Hand of the King" in as many words. Reusing it for
+    # anyone else would state something plainly false, so a non-default
+    # protagonist gets an opening written through their own projection.
+    if world.opening and world.player_id == default_player:
+        raw = world.opening
+    else:
+        with telemetry.turn_context("opening", 0):
+            raw = llm.get_opening(view, world.canon)
+    narration, suggestions = _split_suggestions(raw)
+
+    # The opening is PERSISTED, not merely returned. The UI replays history() on
+    # load, so an opening that lives only in this response is overwritten by its
+    # own empty turn-0 row — which the player sees as a blank screen with three
+    # suggestions and no idea where they are.
+    game_id = store.create_game(world, seed=seed,
+                                title=request.title or world.title,
+                                narration=narration)
     return {"game_id": game_id, "seed": seed,
             "turn": 0, "time_of_day": view.time_of_day,
-            "narration": _opening_scene(view),
-            "suggested_actions": [
-                "Ask Grand Maester Ollivar about the king's illness",
-                "Press Lord Stagg on the treasury ledgers",
-                "Visit the king in his chambers",
-            ]}
+            "title": world.title,
+            "narration": narration,
+            "suggested_actions": suggestions or _fallback_suggestions(view)}
 
 
-def _opening_scene(view) -> str:
-    """Hand-written, not generated: the first thing the player reads should be
-    reliable, and it costs an LLM call we don't need to spend."""
-    return (
-        f"{view.time_of_day}. The small council chamber smells of cold wax.\n\n"
-        f"You are {view.self_name}, {view.self_title} — nine days in the office "
-        f"and already the realm feels like something held together by hand. The "
-        f"king has not left his bed in eleven days. Grand Maester Ollivar says "
-        f"it is age and a hard winter.\n\n"
-        f"Across the table, Byren Stagg has not opened the ledgers he brought. "
-        f"Mycella Ferrow is watching you, and has been for some time.")
+def _fallback_suggestions(view) -> list[str]:
+    """Derived from the world, not from one scenario's script."""
+    people = [p.name for p in view.present][:2]
+    return ([f"Speak to {name}" for name in people]
+            + ["Look around", "Wait and listen"])[:3]
 
 
 class GeneratedGame(BaseModel):
@@ -149,20 +228,30 @@ def generate_game(request: GeneratedGame) -> dict:
         saved = worldgen.save(world, SEED_FILE.parent / f"{safe}.json")
 
     seed = request.seed or uuid.uuid4().hex[:8]
-    game_id = store.create_game(world, seed=seed,
-                                title=request.title or request.premise[:60])
     view = project(world, world.player_id)
+
+    # A generated world MUST get a written opening. Dropping the player onto a
+    # bare "you are X" with three suggestions and no scene is how they end up
+    # asking the game to introduce itself — and the answer they get then is
+    # improvised in the chat rather than grounded in the projection.
+    with telemetry.turn_context("opening", 0):
+        raw = llm.get_opening(view, world.canon)
+    narration, suggestions = _split_suggestions(raw)
+
+    game_id = store.create_game(world, seed=seed,
+                                title=request.title or world.title,
+                                narration=narration)
     return {
         "game_id": game_id,
         "seed": seed,
         "turn": 0,
         "time_of_day": view.time_of_day,
+        "title": world.title,
         "canon": world.canon,
         "report": report,
         "saved_to": saved,
-        "narration": f"{view.time_of_day}. You are {view.self_name}"
-                     + (f", {view.self_title}." if view.self_title else "."),
-        "suggested_actions": ["Look around", "Speak to whoever is here", "Wait"],
+        "narration": narration,
+        "suggested_actions": suggestions or _fallback_suggestions(view),
     }
 
 

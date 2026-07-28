@@ -363,6 +363,71 @@ def get_referee(view: ProjectedWorld, action_text: str) -> RefereeCall:
             return RefereeCall(reasoning="(malformed reply — default difficulty)")
 
 
+OPENING_SYSTEM = (
+    "You open a scene. The player has just arrived and knows nothing except what "
+    "they are told here. Establish where they are, who they are, and who is in "
+    "the room — concretely, in second person, present tense, under 200 words. "
+    "You may only use what you are given: never invent a person, place, event or "
+    "fact that is not listed. Then a blank line, then exactly three suggested "
+    "actions, one per line, each starting with '> '."
+)
+
+
+def get_opening(view: ProjectedWorld, canon: str = "") -> str:
+    """Write the first thing the player reads in a generated world.
+
+    Goes through the narrator's projection like everything else, so the opening
+    cannot leak a secret to establish atmosphere — which is exactly the sort of
+    place a hand-written intro would cheat, because it feels like scene-setting
+    rather than disclosure.
+
+    `canon` is world-level tone and genre logic, not hidden state, so it is safe
+    to pass and it is what stops a generated world opening in the wrong register.
+    """
+    people = _people(view)
+    beliefs = "\n".join(f"  - {b.content}" for b in view.beliefs[:8]) or "  - very little"
+    prompt = f"""TIME: {view.time_of_day}
+PLACE: {view.location}
+YOU ARE NARRATING TO: {view.self_name}, {view.self_title}
+
+WORLD:
+{canon or "(no canon recorded)"}
+
+THEY WANT: {'; '.join(view.wants) or 'nothing in particular'}
+THEY FEAR: {'; '.join(view.fears) or 'nothing'}
+
+PEOPLE PRESENT:
+{people}
+
+WHAT THEY ALREADY KNOW:
+{beliefs}
+
+Open the scene."""
+    with telemetry.timed("opening", prompt) as slot:
+        try:
+            text = complete_text(prompt, OPENING_SYSTEM, capability="narrate",
+                                 priority="high")
+        except LLMUnavailable as exc:
+            slot.finish("", ok=False, error=str(exc), violations=["unavailable"])
+            return _fallback_opening(view)
+        slot.finish(text, violations=[] if "> " in text else ["no_suggestions"])
+        return text
+
+
+def _fallback_opening(view: ProjectedWorld) -> str:
+    """Every provider is down and the player still needs to know where they are.
+
+    Plain, but never blank: a player dropped onto an empty screen with three
+    suggestions has no idea what game they are in.
+    """
+    here = ", ".join(f"{p.name} ({p.title})" for p in view.present) or "no one"
+    return (f"{view.time_of_day}. You are {view.self_name}"
+            + (f", {view.self_title}" if view.self_title else "")
+            + f", at {view.location or 'an unremarked place'}.\n\n"
+            f"Present: {here}.\n\n"
+            "> Look around\n> Speak to whoever is here\n> Wait and listen")
+
+
 SCENE_REPORT_SYSTEM = (
     "You report, secondhand, a conversation the listener was not present for. "
     "You never invent what was said. Lines you are told were unintelligible stay "

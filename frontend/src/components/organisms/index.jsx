@@ -11,52 +11,115 @@ import {
 
 // ── Session Zero ────────────────────────────────────────────────────────────
 
-// The start screen. Two ways in: the hand-authored court, or generate a world
-// from a premise.
+// The start screen. Two ways in: pick a scenario that exists on disk, or
+// generate a new world from a premise.
 //
-// Generation is deliberately presented as a SEPARATE, SLOWER thing rather than
-// hidden behind the same button — it runs on the good model, takes real time,
-// and building the world before play is the entire reason the engine can stay
-// consistent afterwards. Hiding that behind a spinner labelled "new game" would
-// make a 40-second wait look like a hang.
-export function StartScreen({ onStart, onGenerate, busy, error, report, phase }) {
+// Nothing here knows about any particular scenario. The list comes from
+// /scenarios, so a world saved by worldgen appears beside the authored court
+// with no frontend change — which is the point. This file used to hardcode one
+// world's title, blurb and opening suggestions, and that made "swap the world"
+// a UI edit.
+export function StartScreen({ scenarios = [], onStart, onGenerate, busy, error,
+                              report, phase }) {
   const [premise, setPremise] = useState('')
-  const [mode, setMode] = useState('court')
+  const [mode, setMode] = useState('play')
+  // Which scenario the player has opened to choose a character in. Null = the
+  // list. Choosing WHO you are is a real decision and deserves its own step —
+  // in this world, playing the poisoner is a different game from hunting him.
+  const [picking, setPicking] = useState(null)
 
-  const examples = [
+  // "Surprise me" FILLS THE FIELD rather than generating immediately. The
+  // premise is the one input that shapes everything downstream, so the player
+  // should always see it — and be able to edit it — before a world is built on
+  // it. A button that skips straight to generation is a random spin, which is
+  // exactly what we do not want as the default path.
+  const seeds = [
     'A siege in its fourth month. The garrison commander suspects his own quartermaster.',
     'A generation ship, three decades out. The captain has been dead for a week and only two people know.',
     'A mining town where the company doctor has started falsifying death certificates.',
+    'A monastery scriptorium where one of the copyists has been altering the text for years.',
+    'A whaling station at the end of the season. The tally does not match the hold.',
+    'A border checkpoint the week a ceasefire is signed. Someone is still selling passage.',
+    'A hospital ward during a quarantine. The register has three names too few.',
+    'A film set on its last week. The lead actor has not been seen in four days.',
   ]
+  const examples = seeds.slice(0, 3)
+
+  function surpriseMe() {
+    const other = seeds.filter((s) => s !== premise)
+    setPremise(other[Math.floor(Math.random() * other.length)])
+  }
 
   return (
     <div className="intro">
-      <h1>{mode === 'court' ? 'The Hand of the King' : 'Build a world'}</h1>
+      <h1>{mode === 'play' ? 'Choose a world' : 'Build a world'}</h1>
 
       <div className="intro__tabs">
-        <Button variant={mode === 'court' ? 'primary' : 'ghost'}
-                onClick={() => setMode('court')} disabled={busy}>
-          The court
+        <Button variant={mode === 'play' ? 'primary' : 'ghost'}
+                onClick={() => setMode('play')} disabled={busy}>
+          Play
         </Button>
         <Button variant={mode === 'generate' ? 'primary' : 'ghost'}
                 onClick={() => setMode('generate')} disabled={busy}>
-          Generate a world
+          Generate
         </Button>
       </div>
 
-      {mode === 'court' ? (
+      {mode === 'play' && picking ? (
         <>
-          <p>
-            You are Orys Ashwood, nine days into the office. The king is dying and
-            everyone at the table is lying about something different.
-          </p>
           <p className="intro__note">
-            The world moves whether or not you do. Nobody — including the narrator —
-            knows what is true except the engine.
+            <button className="link" onClick={() => setPicking(null)}
+                    disabled={busy}>← all worlds</button>
           </p>
-          <Button onClick={onStart} disabled={busy}>
-            {busy ? 'shuffling the deck…' : 'Take the office'}
-          </Button>
+          <p>Who are you in this one?</p>
+          <ul className="scenarios">
+            {(picking.playable || []).map((who) => (
+              <li key={who.id} className="scenario">
+                <div className="scenario__text">
+                  <strong>
+                    {who.name}
+                    {who.default && <span className="scenario__as"> · intended</span>}
+                  </strong>
+                  <span className="scenario__as">
+                    {who.role}{who.location ? ` — ${who.location.replace(/_/g, ' ')}` : ''}
+                  </span>
+                  {who.wants?.length > 0 && <p>wants {who.wants.join('; ')}</p>}
+                </div>
+                <Button onClick={() => onStart(picking.id, who.id)} disabled={busy}>
+                  {busy ? '…' : 'Play'}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : mode === 'play' ? (
+        <>
+          {scenarios.length === 0 && !busy && (
+            <p className="intro__note">
+              No scenarios found on disk. Generate one instead.
+            </p>
+          )}
+          <ul className="scenarios">
+            {scenarios.map((s) => (
+              <li key={s.id} className="scenario">
+                <div className="scenario__text">
+                  <strong>{s.title}</strong>
+                  <span className="scenario__as">
+                    {(s.playable || []).length} playable character
+                    {(s.playable || []).length === 1 ? '' : 's'}
+                  </span>
+                  <p>{s.blurb}</p>
+                </div>
+                <Button onClick={() => setPicking(s)} disabled={busy}>
+                  Choose
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <p className="intro__note">
+            The world moves whether or not you do. Nobody — including the
+            narrator — knows what is true except the engine.
+          </p>
         </>
       ) : (
         <>
@@ -82,13 +145,19 @@ export function StartScreen({ onStart, onGenerate, busy, error, report, phase })
               </li>
             ))}
           </ul>
-          <Button onClick={() => onGenerate(premise.trim())}
-                  disabled={busy || !premise.trim()}>
-            {busy ? 'building the world…' : 'Build it'}
-          </Button>
+          <div className="intro__actions">
+            <Button onClick={() => onGenerate(premise.trim())}
+                    disabled={busy || !premise.trim()}>
+              {busy ? 'building the world…' : 'Build it'}
+            </Button>
+            <Button variant="ghost" onClick={surpriseMe} disabled={busy}>
+              Surprise me
+            </Button>
+          </div>
           {busy && (
             <p className="intro__note">
-              <Spinner label="generating" /> {phase || 'This runs on the good model and takes a while. It happens once.'}
+              <Spinner label="generating" />{' '}
+              {phase || 'This runs on the good model and takes a while. It happens once.'}
             </p>
           )}
         </>
@@ -128,8 +197,8 @@ export function ChatLog({ entries, busy }) {
       ))}
       {busy && (
         <div className="chatlog__pending">
-          <Spinner label="the court moves" />
-          <span>the court moves…</span>
+          <Spinner label="the world moves" />
+          <span>the world moves…</span>
         </div>
       )}
       <div ref={endRef} />
@@ -161,12 +230,14 @@ export function Composer({ value, onChange, onSubmit, busy, suggestions }) {
   )
 }
 
-export function StatusBar({ time, turn, meters, providers, onRewind, busy,
+export function StatusBar({ title, time, turn, meters, providers, onRewind, busy,
                             onToggleDM, dmOpen }) {
   return (
     <header className="statusbar">
       <div className="statusbar__row">
-        <strong className="statusbar__time">{time || '—'}</strong>
+        <strong className="statusbar__time">
+          {title ? `${title} — ` : ''}{time || '—'}
+        </strong>
         <TurnControls turn={turn} onRewind={onRewind} disabled={busy} />
         <Button variant="ghost" onClick={onToggleDM}>
           {dmOpen ? 'hide DM' : 'DM view'}

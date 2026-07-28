@@ -23,10 +23,23 @@ export default function PlayPage() {
   // Worldgen only: repairs made to the generated spec, and a progress line.
   const [report, setReport] = useState([])
   const [phase, setPhase] = useState('')
+  // True from the moment a game is created until the player acts, so the boot
+  // effect cannot overwrite the opening scene it was just handed.
+  const [fresh, setFresh] = useState(false)
+  const [scenarios, setScenarios] = useState([])
+  const [title, setTitle] = useState('')
+
+  useEffect(() => { api.scenarios().then(setScenarios).catch(() => setScenarios([])) }, [])
 
   // ── boot: resume the saved game, or offer a new one ──────────────────
+  //
+  // `fresh` guards a real bug: starting a game sets gameId, which fires this
+  // effect, which replaced the opening scene we had just rendered with the
+  // turn-0 row from the database. The opening is now persisted (so a genuine
+  // reload replays it correctly), but a just-started game still must not have
+  // its entries swapped out from under it mid-render.
   useEffect(() => {
-    if (!gameId) return
+    if (!gameId || fresh) return
     api.history(gameId)
       .then((history) => {
         setEntries(history)
@@ -35,7 +48,7 @@ export default function PlayPage() {
       // A saved id pointing at a game the server no longer has (fresh volume,
       // deleted save) must not wedge the app on a blank screen.
       .catch(() => { clearGameId(); setGameId(null) })
-  }, [gameId])
+  }, [gameId, fresh])
 
   // Poll the router so a stalled turn is explicable. Cheap call, and it only
   // runs while the tab is open.
@@ -57,17 +70,25 @@ export default function PlayPage() {
 
   useEffect(() => { if (gameId) refreshDM() }, [gameId, turn, refreshDM])
 
-  async function startGame() {
+  async function startGame(scenarioId = 'seed', playAs = '') {
     setBusy(true); setError(null)
     try {
-      const game = await api.newGame('The Hand of the King')
-      saveGameId(game.game_id)
-      setGameId(game.game_id)
-      setEntries([{ turn: 0, narration: game.narration, player_action: '' }])
-      setSuggestions(game.suggested_actions)
-      setTime(game.time_of_day)
-      setTurn(0)
+      const game = await api.newGame(scenarioId, playAs)
+      openGame(game)
     } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+
+  // Shared by both ways in, so a generated world and an authored one land the
+  // player in exactly the same state.
+  function openGame(game) {
+    setFresh(true)
+    saveGameId(game.game_id)
+    setGameId(game.game_id)
+    setEntries([{ turn: 0, narration: game.narration, player_action: '' }])
+    setSuggestions(game.suggested_actions || [])
+    setTime(game.time_of_day)
+    setTitle(game.title || '')
+    setTurn(0)
   }
 
   // Session Zero. Deliberately a distinct call with its own progress copy: it
@@ -79,12 +100,7 @@ export default function PlayPage() {
     setPhase('Writing the cast, the facts, and who is lying about what…')
     try {
       const game = await api.generateGame(premise)
-      saveGameId(game.game_id)
-      setGameId(game.game_id)
-      setEntries([{ turn: 0, narration: game.narration, player_action: '' }])
-      setSuggestions(game.suggested_actions)
-      setTime(game.time_of_day)
-      setTurn(0)
+      openGame(game)
       // Repairs made to the generated spec. Surfaced rather than swallowed: a
       // world that generated badly should be visible, not silently thin.
       setReport(game.report || [])
@@ -96,7 +112,7 @@ export default function PlayPage() {
   async function act() {
     const text = draft.trim()
     if (!text || busy) return
-    setBusy(true); setError(null)
+    setBusy(true); setError(null); setFresh(false)
     // Optimistically show the action so the UI responds instantly — a turn can
     // take many seconds across several providers.
     setEntries((prev) => [...prev, { turn: turn + 1, player_action: text, narration: '' }])
@@ -138,6 +154,7 @@ export default function PlayPage() {
     return (
       <main className="shell shell--empty">
         <StartScreen
+          scenarios={scenarios}
           onStart={startGame}
           onGenerate={generateWorld}
           busy={busy}
@@ -153,6 +170,7 @@ export default function PlayPage() {
     <main className={`shell ${dmOpen ? 'shell--dm' : ''}`}>
       <div className="shell__play">
         <StatusBar
+          title={title}
           time={time} turn={turn} meters={meters} providers={providers}
           onRewind={rewind} busy={busy}
           dmOpen={dmOpen} onToggleDM={() => { setDmOpen(!dmOpen); refreshDM() }}

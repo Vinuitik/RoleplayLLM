@@ -289,6 +289,13 @@ class WorldState(BaseModel):
     # impossible in this world. Worldgen writes it; play-time planning reads it,
     # so the planner references an established world instead of inventing one.
     canon: str = ""
+    # Scenario identity, so the UI never has to hardcode one world's copy.
+    title: str = ""
+    blurb: str = ""
+    # An authored opening scene. Optional: a scenario that ships one gets a
+    # reliable first screen with no LLM call; anything else has one written
+    # through the player's projection at game start.
+    opening: str = ""
     # Normalised question -> fact id, for truths established mid-game (lore.py).
     # This is what makes just-in-time truth IDEMPOTENT: asking three characters
     # the same thing interrogates one fact instead of minting three. Without it,

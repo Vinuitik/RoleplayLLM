@@ -74,12 +74,21 @@ def _now() -> datetime:
 
 # ── games ───────────────────────────────────────────────────────────────────
 
-def create_game(world: WorldState, seed: str, title: str = "") -> str:
+def create_game(world: WorldState, seed: str, title: str = "",
+                narration: str = "") -> str:
+    """Create a game and persist its turn-0 snapshot.
+
+    `narration` is the opening scene, and it MUST be stored rather than merely
+    returned. The UI replays `history()` on every load, so an opening that lives
+    only in the create response is overwritten by its own empty row the moment
+    the page settles — which reads to the player as a blank screen with
+    suggestions and no idea where they are.
+    """
     game_id = uuid.uuid4().hex[:12]
     with engine.begin() as connection:
         connection.execute(games.insert().values(
             id=game_id, seed=seed, title=title, created_at=_now()))
-    save_snapshot(game_id, world, narration="", dm_log=[], player_action="")
+    save_snapshot(game_id, world, narration=narration, dm_log=[], player_action="")
     return game_id
 
 

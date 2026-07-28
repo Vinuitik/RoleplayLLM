@@ -20,8 +20,16 @@ export const api = {
   health: () => request('/health'),
   providers: () => request('/providers'),
 
-  newGame: (title = '', seed = '') =>
-    request('/games', { method: 'POST', body: JSON.stringify({ title, seed }) }),
+  // Every playable scenario on disk, including any world saved by worldgen.
+  scenarios: () => request('/scenarios'),
+
+  // `playAs` is blank for the scenario's default character. The seed names one,
+  // but that is a default, not a protagonist — every character has a projection.
+  newGame: (scenario = 'seed', playAs = '', title = '', seed = '') =>
+    request('/games', {
+      method: 'POST',
+      body: JSON.stringify({ scenario, play_as: playAs, title, seed }),
+    }),
 
   // Session Zero. Slow on purpose — it builds a whole world before play starts,
   // which is what stops the engine inventing entities mid-game. Given its own

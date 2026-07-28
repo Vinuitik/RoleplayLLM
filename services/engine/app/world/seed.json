@@ -835,5 +835,8 @@
     }
   },
   "modifiers": [],
-  "chronicle": []
+  "chronicle": [],
+  "title": "The Hand of the King",
+  "blurb": "The king is dying and everyone at the table is lying about something different. You are nine days into the office.",
+  "opening": "Day 0, morning (08:00). The small council chamber smells of cold wax.\n\nYou are Orys Ashwood, Hand of the King — nine days in the office and already the realm feels like something held together by hand. The king has not left his bed in eleven days. Grand Maester Ollivar says it is age and a hard winter.\n\nAcross the table, Byren Stagg has not opened the ledgers he brought. Mycella Ferrow is watching you, and has been for some time.\n\n> Ask Grand Maester Ollivar about the king's illness\n> Press Lord Stagg on the treasury ledgers\n> Visit the king in his chambers"
 }

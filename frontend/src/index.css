@@ -69,8 +69,21 @@ body {
 /* Session Zero. The two ways in sit side by side rather than one hiding behind
    the other, because generating a world is a materially different (and slower)
    thing than starting the authored one. */
+/* Scenario list. Grows with whatever is on disk, including generated worlds. */
+.scenarios { list-style: none; padding: 0; margin: 0 0 1.5rem; text-align: left; }
+.scenario {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.9rem 0; border-bottom: 1px solid var(--line, rgba(255,255,255,0.08));
+}
+.scenario:last-child { border-bottom: 0; }
+.scenario__text { flex: 1; min-width: 0; }
+.scenario__text strong { color: var(--gold); display: block; }
+.scenario__as { font-size: 0.8rem; color: var(--ink-faint); }
+.scenario p { margin: 0.3rem 0 0; font-size: 0.88rem; line-height: 1.45; }
+
 .intro__tabs { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1.5rem; }
 .intro .field { width: 100%; margin: 1rem 0 0.5rem; text-align: left; }
+.intro__actions { display: flex; gap: 0.6rem; justify-content: center; }
 .intro__examples { list-style: none; padding: 0; margin: 0 0 1.25rem; text-align: left; }
 .intro__examples li { margin: 0.4rem 0; }
 .link {
